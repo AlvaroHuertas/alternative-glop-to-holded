@@ -43,9 +43,53 @@ Luego visita: http://localhost:8000
 
 ## 📝 Endpoints
 
-- `GET /` - Hello World
-- `GET /health` - Health check
+- `GET /` - Frontend principal con upload de CSV
+- `GET /health` - Health check general
+- `GET /api/holded/health` - Verifica la configuración de Holded API
+- `POST /api/upload-csv` - Subir y procesar archivo CSV
 - `GET /docs` - Documentación interactiva de FastAPI (Swagger UI)
+
+## 🔐 Configuración de Variables de Entorno
+
+### Variables requeridas para Holded
+
+```bash
+HOLDED_API_KEY=tu_api_key_aqui
+HOLDED_BASE_URL=https://api.holded.com/api/invoicing/v1/products
+```
+
+### Configuración Local
+
+1. Copia el archivo de ejemplo:
+```bash
+cp .env.example .env
+```
+
+2. Edita `.env` y añade tu API key de Holded
+
+3. El archivo `.env` se cargará automáticamente al iniciar la aplicación
+
+### Configuración en Railway
+
+1. Ve a tu proyecto en Railway
+2. Haz clic en la pestaña "Variables"
+3. Añade las siguientes variables:
+   - `HOLDED_API_KEY`: Tu API key de Holded
+   - `HOLDED_BASE_URL`: `https://api.holded.com/api/invoicing/v1/products`
+
+4. Railway redesplegará automáticamente tu aplicación
+
+### Verificar configuración
+
+Después de configurar las variables, verifica que todo funciona visitando:
+- Local: `http://localhost:8000/api/holded/health`
+- Railway: `https://tu-app.railway.app/api/holded/health`
+
+La respuesta mostrará:
+- Si las variables están configuradas
+- Los últimos 4 caracteres de tu API key (para verificación segura)
+- El resultado de una prueba de conexión real con la API de Holded
+
 
 ## 🔧 Archivos del proyecto
 
