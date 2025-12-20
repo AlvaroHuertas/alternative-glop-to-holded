@@ -389,3 +389,175 @@ async def validate_stock(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error al procesar validación: {str(e)}")
 
+
+@app.get("/api/holded/stock-by-warehouse")
+async def get_stock_by_warehouse():
+    """
+    Get stock of all products distributed by warehouse from Holded API.
+    
+    This endpoint:
+    1. Fetches all warehouses
+    2. Fetches all products (to get complete data: name, SKU, variants)
+    3. For each warehouse, fetches stock using GET /warehouses/{warehouseId}/stock
+    4. Consolidates information into a table-friendly structure
+    
+    Returns:
+    - List of warehouses
+    - List of products with stock per warehouse
+    - Summary statistics
+    """
+    # Check if API key is configured
+    if not HOLDED_API_KEY:
+        raise HTTPException(status_code=400, detail="API key de Holded no configurada")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "key": HOLDED_API_KEY,
+                "accept": "application/json"
+            }
+            
+            # Step 1: Get all warehouses
+            warehouses_url = "https://api.holded.com/api/invoicing/v1/warehouses"
+            warehouses_response = await client.get(warehouses_url, headers=headers, timeout=30.0)
+            
+            if warehouses_response.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Error al obtener almacenes: HTTP {warehouses_response.status_code}"
+                )
+            
+            warehouses = warehouses_response.json()
+            
+            if not warehouses:
+                return {
+                    "status": "success",
+                    "warehouses": [],
+                    "products": [],
+                    "summary": {
+                        "total_warehouses": 0,
+                        "total_products": 0,
+                        "total_variants": 0
+                    }
+                }
+            
+            # Step 2: Get all products
+            products_url = "https://api.holded.com/api/invoicing/v1/products"
+            products_response = await client.get(products_url, headers=headers, timeout=30.0)
+            
+            if products_response.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Error al obtener productos: HTTP {products_response.status_code}"
+                )
+            
+            products = products_response.json()
+            
+            # Create a dictionary of products by ID for quick lookup
+            products_dict = {p['id']: p for p in products}
+            
+            # Step 3: Get stock from each warehouse
+            warehouse_stock_map = {}  # warehouse_id -> {product_id: stock_data}
+            
+            for warehouse in warehouses:
+                warehouse_id = warehouse.get('id')
+                if not warehouse_id:
+                    continue
+                
+                stock_url = f"https://api.holded.com/api/invoicing/v1/warehouses/{warehouse_id}/stock"
+                stock_response = await client.get(stock_url, headers=headers, timeout=30.0)
+                
+                if stock_response.status_code == 200:
+                    stock_data = stock_response.json()
+                    warehouse_products = stock_data.get('warehouse', {}).get('products', [])
+                    
+                    # Map stock by product ID
+                    warehouse_stock_map[warehouse_id] = {}
+                    for stock_item in warehouse_products:
+                        product_id = stock_item.get('product_id')
+                        if product_id:
+                            warehouse_stock_map[warehouse_id][product_id] = {
+                                'stock': stock_item.get('stock', 0),
+                                'variants': stock_item.get('variants', {})
+                            }
+            
+            # Step 4: Consolidate data into table format
+            products_list = []
+            total_products = 0
+            total_variants = 0
+            
+            for product in products:
+                product_id = product.get('id')
+                product_name = product.get('name', 'N/A')
+                product_sku = product.get('sku', '')
+                
+                # Add main product if it has SKU
+                if product_sku:
+                    stock_by_warehouse = {}
+                    
+                    for warehouse in warehouses:
+                        warehouse_id = warehouse.get('id')
+                        stock_info = warehouse_stock_map.get(warehouse_id, {}).get(product_id, {})
+                        stock_by_warehouse[warehouse_id] = stock_info.get('stock', 0)
+                    
+                    products_list.append({
+                        'sku': product_sku,
+                        'name': product_name,
+                        'type': 'principal',
+                        'stock_by_warehouse': stock_by_warehouse
+                    })
+                    total_products += 1
+                
+                # Add variants if they exist
+                variants = product.get('variants', [])
+                for variant in variants:
+                    variant_id = variant.get('id')
+                    variant_sku = variant.get('sku', '')
+                    variant_name = variant.get('name', '')
+                    
+                    if variant_sku:
+                        stock_by_warehouse = {}
+                        
+                        for warehouse in warehouses:
+                            warehouse_id = warehouse.get('id')
+                            stock_info = warehouse_stock_map.get(warehouse_id, {}).get(product_id, {})
+                            variants_stock = stock_info.get('variants', {})
+                            stock_by_warehouse[warehouse_id] = variants_stock.get(variant_id, 0)
+                        
+                        full_name = f"{product_name} - {variant_name}" if variant_name else product_name
+                        
+                        products_list.append({
+                            'sku': variant_sku,
+                            'name': full_name,
+                            'type': 'variante',
+                            'stock_by_warehouse': stock_by_warehouse
+                        })
+                        total_variants += 1
+            
+            # Prepare warehouse list for response
+            warehouses_list = [
+                {
+                    'id': wh.get('id'),
+                    'name': wh.get('name', 'Sin nombre')
+                }
+                for wh in warehouses
+            ]
+            
+            return {
+                "status": "success",
+                "warehouses": warehouses_list,
+                "products": products_list,
+                "summary": {
+                    "total_warehouses": len(warehouses),
+                    "total_products": total_products,
+                    "total_variants": total_variants
+                }
+            }
+    
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout al conectar con Holded API")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+

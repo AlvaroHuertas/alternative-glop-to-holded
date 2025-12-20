@@ -81,6 +81,13 @@
                                 <path d="M9 22V12H15V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                             </svg>
                         </button>
+                        <button class="upload-btn secondary-btn holded-btn" id="fetchStockByWarehouseBtn">
+                            <span class="btn-text">Stock por Almacén</span>
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M20 7H4C2.89543 7 2 7.89543 2 9V19C2 20.1046 2.89543 21 4 21H20C21.1046 21 22 20.1046 22 19V9C22 7.89543 21.1046 7 20 7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M16 21V5C16 4.46957 15.7893 3.96086 15.4142 3.58579C15.0391 3.21071 14.5304 3 14 3H10C9.46957 3 8.96086 3.21071 8.58579 3.58579C8.21071 3.96086 8 4.46957 8 5V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
                         <!-- More Holded query buttons can be added here in the future -->
                     </div>
                 </div>
@@ -254,6 +261,50 @@
                                     </tr>
                                 </thead>
                                 <tbody id="warehousesTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock by Warehouse Section -->
+                <div class="holded-section" id="stockByWarehouseSection" style="display: none;">
+                    <div class="data-header" id="stockByWarehouseHeaderToggle">
+                        <div class="data-header-left">
+                            <h2 class="data-title">Stock por Almacén</h2>
+                            <button class="toggle-btn" id="toggleStockByWarehouseBtn" aria-label="Toggle stock by warehouse">
+                                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <button class="clear-btn" id="clearStockByWarehouseBtn">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Limpiar
+                        </button>
+                    </div>
+                    <div class="table-collapsible-content" id="stockByWarehouseContent">
+                        <div class="holded-summary">
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Total Almacenes:</span>
+                                <span class="summary-value" id="stockWarehousesCount">0</span>
+                            </div>
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Productos:</span>
+                                <span class="summary-value" id="stockProductsCount">0</span>
+                            </div>
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Variantes:</span>
+                                <span class="summary-value" id="stockVariantsCount">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Stock Table -->
+                        <div class="table-container">
+                            <table class="data-table stock-warehouse-table" id="stockByWarehouseTable">
+                                <thead id="stockByWarehouseTableHead"></thead>
+                                <tbody id="stockByWarehouseTableBody"></tbody>
                             </table>
                         </div>
                     </div>
