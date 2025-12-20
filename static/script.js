@@ -363,3 +363,123 @@ validateStockBtn.addEventListener('click', async () => {
         progressContainer.style.display = 'none';
     }
 });
+
+// Holded Warehouses Section
+const fetchWarehousesBtn = document.getElementById('fetchWarehousesBtn');
+const holdedWarehousesSection = document.getElementById('holdedWarehousesSection');
+const toggleHoldedWarehousesBtn = document.getElementById('toggleHoldedWarehousesBtn');
+const holdedWarehousesHeaderToggle = document.getElementById('holdedWarehousesHeaderToggle');
+const clearHoldedWarehousesBtn = document.getElementById('clearHoldedWarehousesBtn');
+const warehousesTableBody = document.getElementById('warehousesTableBody');
+const warehousesCount = document.getElementById('warehousesCount');
+
+let isHoldedWarehousesCollapsed = false;
+
+// Toggle Holded warehouses section visibility
+function toggleHoldedWarehouses() {
+    isHoldedWarehousesCollapsed = !isHoldedWarehousesCollapsed;
+    holdedWarehousesSection.classList.toggle('collapsed', isHoldedWarehousesCollapsed);
+}
+
+// Add click handlers for holded warehouses toggle
+toggleHoldedWarehousesBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleHoldedWarehouses();
+});
+
+holdedWarehousesHeaderToggle.addEventListener('click', (e) => {
+    if (!e.target.closest('.clear-btn')) {
+        toggleHoldedWarehouses();
+    }
+});
+
+// Clear holded warehouses data
+clearHoldedWarehousesBtn.addEventListener('click', () => {
+    holdedWarehousesSection.style.display = 'none';
+    warehousesTableBody.innerHTML = '';
+    warehousesCount.textContent = '0';
+});
+
+// Render warehouses table
+function renderWarehouses(data) {
+    warehousesTableBody.innerHTML = '';
+    
+    if (!data.warehouses || data.warehouses.length === 0) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = '<td colspan="3" style="text-align: center; color: var(--text-secondary);">No hay almacenes disponibles</td>';
+        warehousesTableBody.appendChild(tr);
+        warehousesCount.textContent = '0';
+        return;
+    }
+    
+    data.warehouses.forEach(warehouse => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td class="numeric">${warehouse.id || '-'}</td>
+            <td>${warehouse.name || '-'}</td>
+            <td>${warehouse.desc || '-'}</td>
+        `;
+        warehousesTableBody.appendChild(tr);
+    });
+    
+    warehousesCount.textContent = data.count.toLocaleString();
+    
+    // Show section and ensure it's expanded
+    holdedWarehousesSection.style.display = 'block';
+    holdedWarehousesSection.classList.remove('collapsed');
+    isHoldedWarehousesCollapsed = false;
+    
+    // Scroll to section
+    setTimeout(() => {
+        holdedWarehousesSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 300);
+}
+
+// Fetch Holded warehouses
+fetchWarehousesBtn.addEventListener('click', async () => {
+    // Show progress
+    progressContainer.style.display = 'block';
+    fetchWarehousesBtn.disabled = true;
+    hideStatus();
+
+    try {
+        // Simulate progress
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += 10;
+            if (progress <= 90) {
+                updateProgress(progress);
+            }
+        }, 100);
+
+        const response = await fetch('/api/holded/warehouses');
+
+        clearInterval(progressInterval);
+        updateProgress(100);
+
+        if (response.ok) {
+            const result = await response.json();
+            showStatus(`¡Consulta exitosa! ${result.count} almacenes encontrados`, 'success');
+            
+            // Render warehouses
+            renderWarehouses(result);
+            
+            // Hide progress after delay
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+            }, 1500);
+            
+            fetchWarehousesBtn.disabled = false;
+        } else {
+            const error = await response.json();
+            showStatus(error.detail || 'Error al obtener almacenes de Holded', 'error');
+            fetchWarehousesBtn.disabled = false;
+            progressContainer.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Fetch warehouses error:', error);
+        showStatus('Error de conexión. Por favor, intenta nuevamente.', 'error');
+        fetchWarehousesBtn.disabled = false;
+        progressContainer.style.display = 'none';
+    }
+});

@@ -70,6 +70,21 @@
                     </svg>
                 </button>
 
+                <!-- Holded API Queries Section -->
+                <div class="holded-queries-section">
+                    <h2 class="section-title">Consultas Holded</h2>
+                    <div class="button-group">
+                        <button class="upload-btn secondary-btn holded-btn" id="fetchWarehousesBtn">
+                            <span class="btn-text">Ver Almacenes</span>
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M3 9L12 2L21 9V20C21 20.5304 20.7893 21.0391 20.4142 21.4142C20.0391 21.7893 19.5304 22 19 22H5C4.46957 22 3.96086 21.7893 3.58579 21.4142C3.21071 21.0391 3 20.5304 3 20V9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M9 22V12H15V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <!-- More Holded query buttons can be added here in the future -->
+                    </div>
+                </div>
+
                 <div class="progress-container" id="progressContainer" style="display: none;">
                     <div class="progress-bar">
                         <div class="progress-fill" id="progressFill"></div>
@@ -197,6 +212,48 @@
                                     </tr>
                                 </thead>
                                 <tbody id="validationTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Holded Warehouses Section -->
+                <div class="holded-section" id="holdedWarehousesSection" style="display: none;">
+                    <div class="data-header" id="holdedWarehousesHeaderToggle">
+                        <div class="data-header-left">
+                            <h2 class="data-title">Almacenes Holded</h2>
+                            <button class="toggle-btn" id="toggleHoldedWarehousesBtn" aria-label="Toggle warehouses">
+                                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <button class="clear-btn" id="clearHoldedWarehousesBtn">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Limpiar
+                        </button>
+                    </div>
+                    <div class="table-collapsible-content" id="holdedWarehousesContent">
+                        <div class="holded-summary">
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Total Almacenes:</span>
+                                <span class="summary-value" id="warehousesCount">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Warehouses Table -->
+                        <div class="table-container">
+                            <table class="data-table" id="warehousesTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre</th>
+                                        <th>Descripción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="warehousesTableBody"></tbody>
                             </table>
                         </div>
                     </div>

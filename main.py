@@ -114,6 +114,50 @@ async def holded_health():
     return response
 
 
+@app.get("/api/holded/warehouses")
+async def get_holded_warehouses():
+    """
+    Get list of warehouses from Holded API
+    Returns:
+    - List of warehouses with their details
+    """
+    # Check if API key is configured
+    if not HOLDED_API_KEY:
+        raise HTTPException(status_code=400, detail="API key de Holded no configurada")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "key": HOLDED_API_KEY,
+                "accept": "application/json"
+            }
+            
+            warehouses_url = "https://api.holded.com/api/invoicing/v1/warehouses"
+            response = await client.get(warehouses_url, headers=headers, timeout=30.0)
+            
+            if response.status_code == 200:
+                warehouses = response.json()
+                return {
+                    "status": "success",
+                    "count": len(warehouses) if isinstance(warehouses, list) else 0,
+                    "warehouses": warehouses
+                }
+            elif response.status_code == 401:
+                raise HTTPException(status_code=401, detail="API key inválida o sin permisos")
+            else:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Error al obtener almacenes de Holded: HTTP {response.status_code}"
+                )
+    
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout al conectar con Holded API")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+
 @app.post("/api/upload-csv")
 async def upload_csv(file: UploadFile = File(...)):
     """
