@@ -63,10 +63,10 @@
                     </button>
                 </div>
 
-                <button class="upload-btn" id="uploadBtn" disabled>
-                    <span class="btn-text">Subir Archivo</span>
+                <button class="upload-btn" id="validateStockBtn" disabled>
+                    <span class="btn-text">Validar Stock</span>
                     <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                 </button>
 
@@ -112,6 +112,91 @@
                             <table class="data-table" id="dataTable">
                                 <thead id="tableHead"></thead>
                                 <tbody id="tableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock Validation Section -->
+                <div class="validation-section" id="validationSection" style="display: none;">
+                    <div class="data-header" id="validationHeaderToggle">
+                        <div class="data-header-left">
+                            <h2 class="data-title">Validación de Stock</h2>
+                            <button class="toggle-btn" id="toggleValidationBtn" aria-label="Toggle validation">
+                                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <button class="clear-btn" id="clearValidationBtn">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Limpiar
+                        </button>
+                    </div>
+                    <div class="table-collapsible-content" id="validationContent">
+                        <!-- File Info -->
+                        <div class="validation-info-grid">
+                            <div class="info-card">
+                                <div class="info-label">Archivo</div>
+                                <div class="info-value" id="valFilename">-</div>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-label">Fecha Creación</div>
+                                <div class="info-value" id="valCreationDate">-</div>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-label">Filas Totales</div>
+                                <div class="info-value" id="valTotalRows">-</div>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-label">SKUs Únicos</div>
+                                <div class="info-value" id="valUniqueSKUs">-</div>
+                            </div>
+                            <div class="info-card">
+                                <div class="info-label">Unidades Vendidas</div>
+                                <div class="info-value" id="valTotalUnitsSold">-</div>
+                            </div>
+                        </div>
+
+                        <!-- Summary Stats -->
+                        <div class="validation-summary">
+                            <div class="summary-item success-item">
+                                <span class="summary-label">Encontrados en Holded:</span>
+                                <span class="summary-value" id="valFoundItems">0</span>
+                            </div>
+                            <div class="summary-item error-item">
+                                <span class="summary-label">No encontrados:</span>
+                                <span class="summary-value" id="valMissingItems">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Missing SKUs Warning -->
+                        <div class="missing-skus-warning" id="missingSkusWarning" style="display: none;">
+                            <div class="warning-header">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <h3>SKUs No Encontrados en Holded</h3>
+                            </div>
+                            <div class="missing-skus-list" id="missingSkusList"></div>
+                        </div>
+
+                        <!-- Validation Results Table -->
+                        <div class="table-container">
+                            <table class="data-table validation-table" id="validationTable">
+                                <thead>
+                                    <tr>
+                                        <th>SKU</th>
+                                        <th>Nombre CSV</th>
+                                        <th>Nombre Holded</th>
+                                        <th class="numeric">Stock Anterior</th>
+                                        <th class="numeric">Vendidas</th>
+                                        <th class="numeric">Stock Nuevo</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="validationTableBody"></tbody>
                             </table>
                         </div>
                     </div>

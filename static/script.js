@@ -5,7 +5,7 @@ const fileInfo = document.getElementById('fileInfo');
 const fileName = document.getElementById('fileName');
 const fileSize = document.getElementById('fileSize');
 const removeBtn = document.getElementById('removeBtn');
-const uploadBtn = document.getElementById('uploadBtn');
+const validateStockBtn = document.getElementById('validateStockBtn');
 const progressContainer = document.getElementById('progressContainer');
 const progressFill = document.getElementById('progressFill');
 const progressText = document.getElementById('progressText');
@@ -19,8 +19,16 @@ const clearBtn = document.getElementById('clearBtn');
 const toggleTableBtn = document.getElementById('toggleTableBtn');
 const dataHeaderToggle = document.getElementById('dataHeaderToggle');
 
+// Validation section elements
+const validationSection = document.getElementById('validationSection');
+const toggleValidationBtn = document.getElementById('toggleValidationBtn');
+const validationHeaderToggle = document.getElementById('validationHeaderToggle');
+const clearValidationBtn = document.getElementById('clearValidationBtn');
+const validationTableBody = document.getElementById('validationTableBody');
+
 let selectedFile = null;
 let isTableCollapsed = false;
+let isValidationCollapsed = false;
 
 // Toggle table visibility
 function toggleTable() {
@@ -39,6 +47,31 @@ dataHeaderToggle.addEventListener('click', (e) => {
     if (!e.target.closest('.clear-btn')) {
         toggleTable();
     }
+});
+
+// Toggle validation visibility
+function toggleValidation() {
+    isValidationCollapsed = !isValidationCollapsed;
+    validationSection.classList.toggle('collapsed', isValidationCollapsed);
+}
+
+// Add click handlers for validation toggle
+toggleValidationBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleValidation();
+});
+
+validationHeaderToggle.addEventListener('click', (e) => {
+    // Don't toggle if clicking on clear button
+    if (!e.target.closest('.clear-btn')) {
+        toggleValidation();
+    }
+});
+
+// Clear validation data
+clearValidationBtn.addEventListener('click', () => {
+    validationSection.style.display = 'none';
+    validationTableBody.innerHTML = '';
 });
 
 // File size formatter
@@ -132,11 +165,12 @@ function handleFileSelect(file) {
     fileName.textContent = file.name;
     fileSize.textContent = formatFileSize(file.size);
     fileInfo.style.display = 'flex';
-    uploadBtn.disabled = false;
+    validateStockBtn.disabled = false;
     hideStatus();
     
     // Hide data section when new file is selected
     dataSection.style.display = 'none';
+    validationSection.style.display = 'none';
 }
 
 // File input change event
@@ -170,10 +204,11 @@ removeBtn.addEventListener('click', (e) => {
     selectedFile = null;
     fileInput.value = '';
     fileInfo.style.display = 'none';
-    uploadBtn.disabled = true;
+    validateStockBtn.disabled = true;
     progressContainer.style.display = 'none';
     hideStatus();
     dataSection.style.display = 'none';
+    validationSection.style.display = 'none';
 });
 
 // Show status message
@@ -194,63 +229,6 @@ function updateProgress(percent) {
     progressText.textContent = `${percent}%`;
 }
 
-// Upload file
-uploadBtn.addEventListener('click', async () => {
-    if (!selectedFile) return;
-
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-
-    // Show progress
-    progressContainer.style.display = 'block';
-    uploadBtn.disabled = true;
-    hideStatus();
-
-    try {
-        // Simulate upload progress
-        let progress = 0;
-        const progressInterval = setInterval(() => {
-            progress += 10;
-            if (progress <= 90) {
-                updateProgress(progress);
-            }
-        }, 100);
-
-        const response = await fetch('/api/upload-csv', {
-            method: 'POST',
-            body: formData
-        });
-
-        clearInterval(progressInterval);
-        updateProgress(100);
-
-        if (response.ok) {
-            const result = await response.json();
-            showStatus(`¡Archivo procesado! ${result.rows} filas cargadas`, 'success');
-            
-            // Render table
-            renderTable(result.columns, result.data);
-            
-            // Hide progress after delay
-            setTimeout(() => {
-                progressContainer.style.display = 'none';
-            }, 2000);
-            
-            uploadBtn.disabled = false;
-        } else {
-            const error = await response.json();
-            showStatus(error.detail || 'Error al subir el archivo', 'error');
-            uploadBtn.disabled = false;
-            progressContainer.style.display = 'none';
-        }
-    } catch (error) {
-        console.error('Upload error:', error);
-        showStatus('Error de conexión. Por favor, intenta nuevamente.', 'error');
-        uploadBtn.disabled = false;
-        progressContainer.style.display = 'none';
-    }
-});
-
 // Logo Easter Egg - Click animation
 const logo = document.getElementById('logo');
 let clickCount = 0;
@@ -264,5 +242,124 @@ logo.addEventListener('click', () => {
     if (clickCount === 5) {
         showStatus('¡Has descubierto el easter egg! 🎉', 'success');
         clickCount = 0;
+    }
+});
+
+// Render validation results
+function renderValidationResults(data) {
+    // Update file info
+    document.getElementById('valFilename').textContent = data.file_info.filename;
+    document.getElementById('valCreationDate').textContent = data.file_info.creation_date;
+    document.getElementById('valTotalRows').textContent = data.file_info.total_rows.toLocaleString();
+    document.getElementById('valUniqueSKUs').textContent = data.file_info.unique_skus.toLocaleString();
+    document.getElementById('valTotalUnitsSold').textContent = data.file_info.total_units_sold.toLocaleString();
+    
+    // Update summary
+    document.getElementById('valFoundItems').textContent = data.summary.found_items.toLocaleString();
+    document.getElementById('valMissingItems').textContent = data.summary.missing_items.toLocaleString();
+    
+    // Handle missing SKUs warning
+    const missingSkusWarning = document.getElementById('missingSkusWarning');
+    const missingSkusList = document.getElementById('missingSkusList');
+    
+    if (data.missing_skus.length > 0) {
+        missingSkusWarning.style.display = 'block';
+        missingSkusList.innerHTML = '';
+        
+        data.missing_skus.forEach(item => {
+            const skuItem = document.createElement('div');
+            skuItem.className = 'missing-sku-item';
+            skuItem.innerHTML = `
+                <span class="sku-code">${item.sku}</span>
+                <span class="sku-name">${item.csv_name}</span>
+                <span class="sold-qty">Vendidas: ${item.sold_qty}</span>
+            `;
+            missingSkusList.appendChild(skuItem);
+        });
+    } else {
+        missingSkusWarning.style.display = 'none';
+    }
+    
+    // Render validation table
+    validationTableBody.innerHTML = '';
+    data.validation_results.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${item.sku}</td>
+            <td>${item.csv_name}</td>
+            <td>${item.holded_name}</td>
+            <td class="numeric">${item.old_stock}</td>
+            <td class="numeric">${item.sold_qty}</td>
+            <td class="numeric ${item.new_stock < 0 ? 'negative-stock' : ''}">${item.new_stock}</td>
+        `;
+        validationTableBody.appendChild(tr);
+    });
+    
+    // Show validation section and ensure it's expanded
+    validationSection.style.display = 'block';
+    validationSection.classList.remove('collapsed');
+    isValidationCollapsed = false;
+    
+    // Scroll to validation section
+    setTimeout(() => {
+        validationSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }, 300);
+}
+
+// Validate stock button handler
+validateStockBtn.addEventListener('click', async () => {
+    if (!selectedFile) return;
+
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    // Show progress
+    progressContainer.style.display = 'block';
+    validateStockBtn.disabled = true;
+    hideStatus();
+
+    try {
+        // Simulate upload progress
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += 5;
+            if (progress <= 90) {
+                updateProgress(progress);
+            }
+        }, 150);
+
+        const response = await fetch('/api/stock/validate', {
+            method: 'POST',
+            body: formData
+        });
+
+        clearInterval(progressInterval);
+        updateProgress(100);
+
+        if (response.ok) {
+            const result = await response.json();
+            showStatus(`¡Validación completada! ${result.summary.found_items} SKUs encontrados, ${result.summary.missing_items} no encontrados`, 
+                      result.summary.missing_items > 0 ? 'warning' : 'success');
+            
+            // Render validation results
+            renderValidationResults(result);
+            
+            // Hide progress after delay
+            setTimeout(() => {
+                progressContainer.style.display = 'none';
+            }, 2000);
+            
+            validateStockBtn.disabled = false;
+        } else {
+            const error = await response.json();
+            showStatus(error.detail || 'Error al validar stock', 'error');
+            validateStockBtn.disabled = false;
+            progressContainer.style.display = 'none';
+        }
+    } catch (error) {
+        console.error('Validation error:', error);
+        showStatus('Error de conexión. Por favor, intenta nuevamente.', 'error');
+        validateStockBtn.disabled = false;
+        progressContainer.style.display = 'none';
     }
 });
