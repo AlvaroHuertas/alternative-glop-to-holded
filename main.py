@@ -2,12 +2,22 @@ from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 import os
 from pathlib import Path
 import pandas as pd
 import io
 from dotenv import load_dotenv
 import httpx
+
+
+class StockUpdateRequest(BaseModel):
+    """Request model for updating product stock"""
+    sku: str = Field(..., description="SKU del producto a actualizar")
+    warehouse_id: str = Field(..., description="ID del almacén donde actualizar el stock")
+    stock_adjustment: float = Field(..., description="Ajuste de stock: positivo para añadir, negativo para restar (ej: +10, -5)")
+    description: str = Field(default="", description="Descripción del ajuste de stock (ej: 'Ajuste de stock', 'VENTAS 19 y 20 DIC')")
+    dry_run: bool = Field(default=False, description="Si es True, simula la petición sin ejecutarla")
 
 # Load environment variables (try .env.local first, then .env)
 load_dotenv(".env.local")
@@ -651,3 +661,247 @@ async def get_stock_by_warehouse():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
+
+
+@app.put("/api/holded/stock/update", tags=["Holded"], summary="Actualizar Stock por SKU y Almacén")
+async def update_stock_by_sku(request: StockUpdateRequest):
+    """
+    Actualiza el stock de un producto por SKU en un almacén específico.
+    
+    **Parámetros:**
+    - `sku`: SKU del producto o variante a actualizar
+    - `warehouse_id`: ID del almacén donde actualizar el stock
+    - `stock_adjustment`: Ajuste de stock (positivo para sumar, negativo para restar, ej: +10, -5)
+    - `description`: Descripción del ajuste (opcional, ej: 'Ajuste de stock', 'VENTAS 19 y 20 DIC')
+    - `dry_run`: Si es True, simula la petición sin ejecutarla (default: False)
+    
+    **Proceso:**
+    1. Busca el producto por SKU en todos los productos de Holded
+    2. Valida que el almacén existe
+    3. Obtiene el stock actual del warehouse
+    4. Calcula el nuevo stock (stock_actual + ajuste)
+    5. Si dry_run=True, simula la actualización y retorna los datos que se enviarían
+    6. Si dry_run=False, ejecuta el ajuste del stock
+    
+    **Retorna:**
+    - Información del producto encontrado
+    - Datos de la petición (SKU, almacén, ajuste de stock)
+    - Resultado de la operación (simulada o real)
+    - Si es dry_run, muestra el payload que se enviaría
+    
+    **Errores posibles:**
+    - 400: API key no configurada o datos inválidos
+    - 404: Producto no encontrado o almacén no existe
+    - 502: Error al comunicarse con Holded
+    - 504: Timeout de conexión
+    
+    **Ejemplo de uso:**
+    ```json
+    {
+        "sku": "PROD-001",
+        "warehouse_id": "warehouse123",
+        "stock_adjustment": -5,
+        "description": "VENTAS 19 y 20 DIC",
+        "dry_run": true
+    }
+    ```
+    """
+    # Check if API key is configured
+    if not HOLDED_API_KEY:
+        raise HTTPException(status_code=400, detail="API key de Holded no configurada")
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "key": HOLDED_API_KEY,
+                "accept": "application/json",
+                "content-type": "application/json"
+            }
+            
+            # Step 1: Get all products to find the one with the given SKU
+            products_url = "https://api.holded.com/api/invoicing/v1/products"
+            products_response = await client.get(products_url, headers=headers, timeout=30.0)
+            
+            if products_response.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Error al obtener productos de Holded: HTTP {products_response.status_code}"
+                )
+            
+            products = products_response.json()
+            
+            # Find product or variant by SKU
+            product_found = None
+            product_id = None
+            product_name = None
+            is_variant = False
+            variant_id = None
+            
+            for product in products:
+                # Check main product SKU
+                if product.get('sku') == request.sku:
+                    product_found = product
+                    product_id = product['id']
+                    product_name = product.get('name', 'N/A')
+                    is_variant = False
+                    break
+                
+                # Check variants
+                variants = product.get('variants', [])
+                for variant in variants:
+                    if variant.get('sku') == request.sku:
+                        product_found = product
+                        product_id = product['id']
+                        variant_id = variant['id']
+                        product_name = f"{product.get('name', 'N/A')} - {variant.get('name', '')}"
+                        is_variant = True
+                        break
+                
+                if product_found:
+                    break
+            
+            if not product_found:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No se encontró ningún producto o variante con SKU: {request.sku}"
+                )
+            
+            # Step 2: Validate that the warehouse exists
+            warehouses_url = "https://api.holded.com/api/invoicing/v1/warehouses"
+            warehouses_response = await client.get(warehouses_url, headers=headers, timeout=30.0)
+            
+            if warehouses_response.status_code != 200:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Error al obtener almacenes: HTTP {warehouses_response.status_code}"
+                )
+            
+            warehouses = warehouses_response.json()
+            warehouse_found = None
+            
+            for warehouse in warehouses:
+                if warehouse.get('id') == request.warehouse_id:
+                    warehouse_found = warehouse
+                    break
+            
+            if not warehouse_found:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"No se encontró el almacén con ID: {request.warehouse_id}"
+                )
+            
+            # Step 3: Get current stock from warehouse
+            stock_url = f"https://api.holded.com/api/invoicing/v1/warehouses/{request.warehouse_id}/stock"
+            stock_response = await client.get(stock_url, headers=headers, timeout=30.0)
+            
+            current_stock = None
+            if stock_response.status_code == 200:
+                stock_data = stock_response.json()
+                warehouse_products = stock_data.get('warehouse', {}).get('products', [])
+                
+                # Find the current stock for this product
+                for stock_item in warehouse_products:
+                    if stock_item.get('product_id') == product_id:
+                        if is_variant and variant_id:
+                            # For variants, look in the variants dict
+                            variants_stock = stock_item.get('variants', {})
+                            current_stock = variants_stock.get(variant_id, 0)
+                        else:
+                            # For main product
+                            current_stock = stock_item.get('stock', 0)
+                        break
+            
+            # If stock not found in warehouse, it means it's 0
+            if current_stock is None:
+                current_stock = 0
+            
+            # Step 4: Prepare the update payload
+            # CRITICAL: According to Holded API documentation, the structure must use
+            # warehouse ID and product/variant ID as KEYS, not as values
+            # Correct format:
+            # {
+            #   "stock": {
+            #     "WAREHOUSE_ID": {
+            #       "PRODUCT_ID or VARIANT_ID": stock_value
+            #     }
+            #   }
+            # }
+            
+            # Determine which ID to use as the key
+            item_id = variant_id if is_variant else product_id
+            
+            # Build the nested structure with stock adjustment
+            stock_payload = {
+                "stock": {
+                    request.warehouse_id: {
+                        item_id: request.stock_adjustment
+                    }
+                }
+            }
+            
+            # Add description if provided
+            if request.description:
+                stock_payload["desc"] = request.description
+            
+            # Prepare response data
+            response_data = {
+                "status": "dry_run" if request.dry_run else "success",
+                "product_info": {
+                    "sku": request.sku,
+                    "product_id": product_id,
+                    "product_name": product_name,
+                    "is_variant": is_variant,
+                    "variant_id": variant_id if is_variant else None
+                },
+                "warehouse_info": {
+                    "warehouse_id": request.warehouse_id,
+                    "warehouse_name": warehouse_found.get('name', 'N/A')
+                },
+                "stock_update": {
+                    "current_stock": current_stock,
+                    "stock_adjustment": request.stock_adjustment,
+                    "new_stock": current_stock + request.stock_adjustment,
+                    "description": request.description if request.description else None
+                }
+            }
+            
+            # Step 5: Execute or simulate the update
+            if request.dry_run:
+                # Dry run mode - just return what would be sent
+                response_data["message"] = "Simulación exitosa - No se realizó ninguna actualización real"
+                response_data["api_call"] = {
+                    "method": "PUT",
+                    "url": f"https://api.holded.com/api/invoicing/v1/products/{product_id}/stock",
+                    "payload": stock_payload
+                }
+            else:
+                # Real update
+                update_url = f"https://api.holded.com/api/invoicing/v1/products/{product_id}/stock"
+                
+                update_response = await client.put(
+                    update_url,
+                    headers=headers,
+                    json=stock_payload,
+                    timeout=30.0
+                )
+                
+                if update_response.status_code == 200:
+                    response_data["message"] = "Stock actualizado exitosamente"
+                    response_data["holded_response"] = update_response.json()
+                elif update_response.status_code == 204:
+                    # Some APIs return 204 No Content on successful update
+                    response_data["message"] = "Stock actualizado exitosamente"
+                else:
+                    raise HTTPException(
+                        status_code=502,
+                        detail=f"Error al actualizar stock en Holded: HTTP {update_response.status_code} - {update_response.text}"
+                    )
+            
+            return response_data
+    
+    except httpx.TimeoutException:
+        raise HTTPException(status_code=504, detail="Timeout al conectar con Holded API")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")

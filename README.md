@@ -43,11 +43,140 @@ Luego visita: http://localhost:8000
 
 ## 📝 Endpoints
 
+### Sistema
 - `GET /` - Frontend principal con upload de CSV
 - `GET /health` - Health check general
-- `GET /api/holded/health` - Verifica la configuración de Holded API
-- `POST /api/upload-csv` - Subir y procesar archivo CSV
 - `GET /docs` - Documentación interactiva de FastAPI (Swagger UI)
+- `GET /redoc` - Documentación alternativa (ReDoc)
+
+### Holded API
+- `GET /api/holded/health` - Verifica la configuración de Holded API
+- `GET /api/holded/warehouses` - Listar almacenes de Holded
+- `GET /api/holded/stock-by-warehouse` - Obtener stock de todos los productos distribuidos por almacén
+- `PUT /api/holded/stock/update` - **Actualizar stock de producto por SKU y almacén**
+
+### Archivos
+- `POST /api/upload-csv` - Subir y procesar archivo CSV
+- `POST /api/stock/validate` - Validar stock contra Holded
+
+---
+
+## 📦 Actualizar Stock por SKU y Almacén
+
+### `PUT /api/holded/stock/update`
+
+Actualiza el stock de un producto en un almacén específico de Holded, identificándolo por su SKU.
+
+#### Características
+
+- ✅ Busca automáticamente el producto por SKU (soporta productos y variantes)
+- ✅ Valida que el almacén existe
+- ✅ Permite ajustes positivos (añadir stock) o negativos (restar stock)
+- ✅ Opción de dry-run para simular sin ejecutar
+- ✅ Incluye descripción personalizada para el log de Holded
+- ✅ Muestra stock actual, ajuste y stock resultante
+
+#### Parámetros
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `sku` | string | ✅ | SKU del producto o variante |
+| `warehouse_id` | string | ✅ | ID del almacén donde actualizar el stock |
+| `stock_adjustment` | number | ✅ | Ajuste de stock: positivo para añadir, negativo para restar |
+| `description` | string | ❌ | Descripción del ajuste (ej: "VENTAS 19 y 20 DIC") |
+| `dry_run` | boolean | ❌ | Si es `true`, simula sin ejecutar (default: `false`) |
+
+#### Ejemplos de Uso
+
+##### 1. Simular resta de stock (dry-run)
+```bash
+curl -X PUT http://localhost:8000/api/holded/stock/update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sku": "5G-3XF++",
+    "warehouse_id": "684d465d86708f8d2d0aaee5",
+    "stock_adjustment": -5,
+    "description": "VENTAS 19 y 20 DIC",
+    "dry_run": true
+  }'
+```
+
+**Respuesta:**
+```json
+{
+  "status": "dry_run",
+  "product_info": {
+    "sku": "5G-3XF++",
+    "product_id": "6917514d421649f142028a0d",
+    "product_name": "3X FILTRÉ ++ - ",
+    "is_variant": true,
+    "variant_id": "6917514d421649f142028a0f"
+  },
+  "warehouse_info": {
+    "warehouse_id": "684d465d86708f8d2d0aaee5",
+    "warehouse_name": "TIENDA SALAMANCA"
+  },
+  "stock_update": {
+    "current_stock": 10,
+    "stock_adjustment": -5,
+    "new_stock": 5,
+    "description": "VENTAS 19 y 20 DIC"
+  },
+  "message": "Simulación exitosa - No se realizó ninguna actualización real",
+  "api_call": {
+    "method": "PUT",
+    "url": "https://api.holded.com/api/invoicing/v1/products/6917514d421649f142028a0d/stock",
+    "payload": {
+      "stock": {
+        "684d465d86708f8d2d0aaee5": {
+          "6917514d421649f142028a0f": -5
+        }
+      },
+      "desc": "VENTAS 19 y 20 DIC"
+    }
+  }
+}
+```
+
+##### 2. Añadir stock real
+```bash
+curl -X PUT http://localhost:8000/api/holded/stock/update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sku": "PROD-001",
+    "warehouse_id": "warehouse123",
+    "stock_adjustment": 25,
+    "description": "AJUSTE POR RECUENTO",
+    "dry_run": false
+  }'
+```
+
+##### 3. Restar stock sin descripción
+```bash
+curl -X PUT http://localhost:8000/api/holded/stock/update \
+  -H "Content-Type: application/json" \
+  -d '{
+    "sku": "2G-XF",
+    "warehouse_id": "warehouse123",
+    "stock_adjustment": -3,
+    "dry_run": false
+  }'
+```
+
+#### Casos de Uso
+
+- **Ajustes de ventas**: Restar unidades vendidas con descripción informativa
+- **Ajustes de inventario**: Corregir stock tras recuento físico
+- **Transferencias**: Restar de un almacén y añadir a otro
+- **Devoluciones**: Añadir unidades devueltas por clientes
+- **Simulación**: Verificar cambios antes de aplicarlos con `dry_run: true`
+
+#### Errores Comunes
+
+- **404**: SKU no encontrado o warehouse no existe
+- **400**: API key no configurada
+- **502**: Error al comunicarse con Holded API
+- **504**: Timeout de conexión
 
 ## 🔐 Configuración de Variables de Entorno
 
