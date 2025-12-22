@@ -18,7 +18,54 @@ HOLDED_API_KEY = os.getenv("HOLDED_API_KEY", "")
 HOLDED_BASE_URL = os.getenv("HOLDED_BASE_URL", "https://api.holded.com/api/invoicing/v1/products")
 
 
-app = FastAPI()
+app = FastAPI(
+    title="Alternative Glop to Holded API",
+    description="""
+## API de integración con Holded
+
+Esta API proporciona endpoints para:
+
+* 🔄 **Validación de Stock**: Procesar archivos CSV y validar contra el inventario de Holded
+* 📦 **Gestión de Almacenes**: Consultar almacenes y stock distribuido por ubicación
+* 📁 **Procesamiento de Archivos**: Subir y procesar archivos CSV
+* 🏥 **Health Checks**: Verificar el estado de la API y la conexión con Holded
+
+### Configuración
+
+Para usar esta API, necesitas configurar las siguientes variables de entorno:
+- `HOLDED_API_KEY`: Tu clave de API de Holded
+- `HOLDED_BASE_URL`: URL base de la API de Holded (opcional, por defecto usa la URL de productos)
+
+### Autenticación con Holded
+
+La API utiliza las credenciales configuradas en las variables de entorno para comunicarse con Holded.
+Puedes verificar la configuración usando el endpoint `/api/holded/health`.
+    """,
+    version="1.0.0",
+    contact={
+        "name": "Soporte API",
+        "email": "soporte@example.com",
+    },
+    license_info={
+        "name": "MIT",
+    },
+    docs_url="/docs",  # Swagger UI
+    redoc_url="/redoc",  # ReDoc
+    openapi_tags=[
+        {
+            "name": "Sistema",
+            "description": "Endpoints del sistema y health checks"
+        },
+        {
+            "name": "Holded",
+            "description": "Endpoints de integración con Holded API"
+        },
+        {
+            "name": "Archivos",
+            "description": "Procesamiento y validación de archivos CSV"
+        }
+    ]
+)
 
 # Add CORS middleware
 app.add_middleware(
@@ -37,24 +84,27 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 uploads_dir = Path(__file__).parent / "uploads"
 uploads_dir.mkdir(exist_ok=True)
 
-@app.get("/")
+@app.get("/", tags=["Sistema"], summary="Página Principal")
 async def read_root():
-    """Serve the main frontend page"""
+    """Serve la página principal de la interfaz web"""
     return FileResponse(static_dir / "index.html")
 
-@app.get("/health")
+@app.get("/health", tags=["Sistema"], summary="Health Check")
 async def health():
+    """Verifica que la API esté funcionando correctamente"""
     return {"status": "ok"}
 
-@app.get("/api/holded/health")
+@app.get("/api/holded/health", tags=["Holded"], summary="Verificar Configuración de Holded")
 async def holded_health():
     """
-    Check Holded API configuration and connectivity
-    Returns:
-    - Configuration status (if API key is set)
-    - Last 4 characters of API key (for verification)
-    - Base URL
-    - Connection test result
+    Verifica la configuración y conectividad con Holded API.
+    
+    **Retorna:**
+    - Estado de configuración (si la API key está configurada)
+    - Últimos 4 caracteres de la API key (para verificación)
+    - URL base configurada
+    - Resultado del test de conexión
+    - Cantidad de productos (si la conexión es exitosa)
     """
     # Check if API key is configured
     api_key_configured = bool(HOLDED_API_KEY)
@@ -114,12 +164,19 @@ async def holded_health():
     return response
 
 
-@app.get("/api/holded/warehouses")
+@app.get("/api/holded/warehouses", tags=["Holded"], summary="Listar Almacenes")
 async def get_holded_warehouses():
     """
-    Get list of warehouses from Holded API
-    Returns:
-    - List of warehouses with their details
+    Obtiene la lista de almacenes desde Holded API.
+    
+    **Retorna:**
+    - Lista de almacenes con sus detalles (ID, nombre, etc.)
+    - Contador total de almacenes
+    
+    **Errores posibles:**
+    - 400: API key no configurada
+    - 401: API key inválida
+    - 504: Timeout de conexión
     """
     # Check if API key is configured
     if not HOLDED_API_KEY:
@@ -158,10 +215,22 @@ async def get_holded_warehouses():
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
 
-@app.post("/api/upload-csv")
+@app.post("/api/upload-csv", tags=["Archivos"], summary="Subir y Procesar CSV")
 async def upload_csv(file: UploadFile = File(...)):
     """
-    Upload and process a CSV file
+    Sube y procesa un archivo CSV.
+    
+    **Parámetros:**
+    - `file`: Archivo CSV a procesar (delimitador: punto y coma)
+    
+    **Retorna:**
+    - Información del archivo (nombre, tamaño)
+    - Número de filas y columnas
+    - Datos procesados en formato JSON
+    
+    **Errores posibles:**
+    - 400: El archivo no es CSV
+    - 500: Error al procesar el archivo
     """
     # Validate file type
     if not file.filename.endswith('.csv'):
@@ -204,11 +273,27 @@ async def upload_csv(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error al procesar el archivo: {str(e)}")
 
 
-@app.post("/api/stock/validate")
+@app.post("/api/stock/validate", tags=["Archivos"], summary="Validar Stock contra Holded")
 async def validate_stock(file: UploadFile = File(...)):
     """
-    Validate stock against Holded API
-    Processes a CSV file with sales data and checks against current Holded inventory
+    Valida stock contra Holded API.
+    
+    Procesa un archivo CSV con datos de ventas y los compara contra el inventario actual de Holded.
+    
+    **Parámetros:**
+    - `file`: Archivo CSV con columnas 'C.BARRAS ARTICULO' y 'UNIDADES'
+    
+    **Retorna:**
+    - Información del archivo procesado
+    - Estadísticas de productos en Holded
+    - Resultados de validación (SKUs encontrados y faltantes)
+    - Cálculo de stock nuevo vs antiguo
+    - Resumen de unidades vendidas
+    
+    **Errores posibles:**
+    - 400: API key no configurada o archivo inválido
+    - 502: Error al comunicarse con Holded
+    - 500: Error de procesamiento
     """
     import csv
     import datetime
@@ -390,21 +475,26 @@ async def validate_stock(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error al procesar validación: {str(e)}")
 
 
-@app.get("/api/holded/stock-by-warehouse")
+@app.get("/api/holded/stock-by-warehouse", tags=["Holded"], summary="Stock por Almacén")
 async def get_stock_by_warehouse():
     """
-    Get stock of all products distributed by warehouse from Holded API.
+    Obtiene el stock de todos los productos distribuidos por almacén desde Holded API.
     
-    This endpoint:
-    1. Fetches all warehouses
-    2. Fetches all products (to get complete data: name, SKU, variants)
-    3. For each warehouse, fetches stock using GET /warehouses/{warehouseId}/stock
-    4. Consolidates information into a table-friendly structure
+    **Proceso:**
+    1. Obtiene todos los almacenes
+    2. Obtiene todos los productos (con nombre, SKU, variantes)
+    3. Para cada almacén, obtiene el stock usando GET /warehouses/{warehouseId}/stock
+    4. Consolida la información en una estructura tabular
     
-    Returns:
-    - List of warehouses
-    - List of products with stock per warehouse
-    - Summary statistics
+    **Retorna:**
+    - Lista de almacenes (ID y nombre)
+    - Lista de productos con stock por cada almacén
+    - Estadísticas resumen (total de almacenes, productos y variantes)
+    
+    **Errores posibles:**
+    - 400: API key no configurada
+    - 502: Error al comunicarse con Holded
+    - 504: Timeout de conexión
     """
     # Check if API key is configured
     if not HOLDED_API_KEY:
