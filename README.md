@@ -59,6 +59,15 @@ Luego visita: http://localhost:8000
 - `POST /api/upload-csv` - Subir y procesar archivo CSV
 - `POST /api/stock/validate` - Validar stock contra Holded
 
+### Cloud Storage
+- `GET /api/gcs/health` - Verificar conexión y configuración de GCS
+- `GET /api/gcs/files` - Listar archivos en el bucket
+- `POST /api/gcs/upload` - Subir archivo al bucket
+- `GET /api/gcs/download/{file_path}` - Descargar archivo
+- `DELETE /api/gcs/delete/{file_path}` - Eliminar archivo
+- `GET /api/gcs/metadata/{file_path}` - Obtener metadata completa
+
+
 ---
 
 ## 📦 Actualizar Stock por SKU y Almacén
@@ -187,6 +196,24 @@ HOLDED_API_KEY=tu_api_key_aqui
 HOLDED_BASE_URL=https://api.holded.com/api/invoicing/v1/products
 ```
 
+### Variables requeridas para Google Cloud Storage
+
+```bash
+GCS_CREDENTIALS_BASE64=tu_json_credenciales_base64
+```
+
+**Generar GCS_CREDENTIALS_BASE64:**
+1. Descarga el JSON de la cuenta de servicio de GCP.
+2. Codifícalo en base64:
+   ```bash
+   # Linux/Mac
+   base64 -i credentials.json -o credentials_base64.txt
+   
+   # Copia el contenido de credentials_base64.txt
+   cat credentials_base64.txt | pbcopy  # En Mac
+   ```
+
+
 ### Configuración Local
 
 1. Copia el archivo de ejemplo:
@@ -205,6 +232,7 @@ cp .env.example .env
 3. Añade las siguientes variables:
    - `HOLDED_API_KEY`: Tu API key de Holded
    - `HOLDED_BASE_URL`: `https://api.holded.com/api/invoicing/v1/products`
+   - `GCS_CREDENTIALS_BASE64`: El contenido base64 de tu JSON de servicio
 
 4. Railway redesplegará automáticamente tu aplicación
 

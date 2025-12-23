@@ -4,3 +4,4 @@ python-multipart
 pandas
 python-dotenv
 httpx
+google-cloud-storage

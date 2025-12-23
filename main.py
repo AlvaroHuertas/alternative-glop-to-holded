@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 import os
@@ -9,6 +9,12 @@ import pandas as pd
 import io
 from dotenv import load_dotenv
 import httpx
+import base64
+import json
+import tempfile
+from google.cloud import storage
+from typing import Optional
+from datetime import datetime
 
 
 class StockUpdateRequest(BaseModel):
@@ -27,6 +33,36 @@ load_dotenv()
 HOLDED_API_KEY = os.getenv("HOLDED_API_KEY", "")
 HOLDED_BASE_URL = os.getenv("HOLDED_BASE_URL", "https://api.holded.com/api/invoicing/v1/products")
 
+# Google Cloud Storage configuration
+GCS_CREDENTIALS_BASE64 = os.getenv("GCS_CREDENTIALS_BASE64", "")
+GCS_BUCKET_NAME = "alternativecbd-glop-reports"
+
+# Initialize GCS client
+def get_gcs_client():
+    """Initialize and return a Google Cloud Storage client using base64-encoded credentials"""
+    if not GCS_CREDENTIALS_BASE64:
+        raise HTTPException(status_code=400, detail="GCS credentials not configured")
+    
+    try:
+        # Decode base64 credentials
+        credentials_json = base64.b64decode(GCS_CREDENTIALS_BASE64).decode('utf-8')
+        credentials_dict = json.loads(credentials_json)
+        
+        # Create a temporary file for credentials
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as temp_file:
+            json.dump(credentials_dict, temp_file)
+            temp_file_path = temp_file.name
+        
+        # Initialize client with credentials
+        client = storage.Client.from_service_account_json(temp_file_path)
+        
+        # Clean up temp file
+        os.unlink(temp_file_path)
+        
+        return client
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error initializing GCS client: {str(e)}")
+
 
 app = FastAPI(
     title="Alternative Glop to Holded API",
@@ -38,18 +74,20 @@ Esta API proporciona endpoints para:
 * 🔄 **Validación de Stock**: Procesar archivos CSV y validar contra el inventario de Holded
 * 📦 **Gestión de Almacenes**: Consultar almacenes y stock distribuido por ubicación
 * 📁 **Procesamiento de Archivos**: Subir y procesar archivos CSV
-* 🏥 **Health Checks**: Verificar el estado de la API y la conexión con Holded
+* ☁️ **Cloud Storage**: Gestión de archivos en Google Cloud Storage (subida, descarga, listado)
+* 🏥 **Health Checks**: Verificar el estado de la API y la conexión con Holded/GCS
 
 ### Configuración
 
 Para usar esta API, necesitas configurar las siguientes variables de entorno:
 - `HOLDED_API_KEY`: Tu clave de API de Holded
 - `HOLDED_BASE_URL`: URL base de la API de Holded (opcional, por defecto usa la URL de productos)
+- `GCS_CREDENTIALS_BASE64`: Credenciales de servicio de Google Cloud (JSON codificado en base64)
 
-### Autenticación con Holded
+### Autenticación e Integraciones
 
-La API utiliza las credenciales configuradas en las variables de entorno para comunicarse con Holded.
-Puedes verificar la configuración usando el endpoint `/api/holded/health`.
+La API utiliza las credenciales configuradas en las variables de entorno para comunicarse con servicios externos (Holded, GCS).
+Puedes verificar la configuración usando los endpoints `/api/holded/health` y `/api/gcs/health`.
     """,
     version="1.0.0",
     contact={
@@ -73,6 +111,10 @@ Puedes verificar la configuración usando el endpoint `/api/holded/health`.
         {
             "name": "Archivos",
             "description": "Procesamiento y validación de archivos CSV"
+        },
+        {
+            "name": "Cloud Storage",
+            "description": "Gestión de archivos en Google Cloud Storage"
         }
     ]
 )
@@ -98,6 +140,11 @@ uploads_dir.mkdir(exist_ok=True)
 async def read_root():
     """Serve la página principal de la interfaz web"""
     return FileResponse(static_dir / "index.html")
+
+@app.get("/storage", tags=["Sistema"], summary="Gestión de Cloud Storage")
+async def storage_page():
+    """Serve la página de gestión de Cloud Storage"""
+    return FileResponse(static_dir / "storage.html")
 
 @app.get("/health", tags=["Sistema"], summary="Health Check")
 async def health():
@@ -905,3 +952,344 @@ async def update_stock_by_sku(request: StockUpdateRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+# ============================================================================
+# GOOGLE CLOUD STORAGE ENDPOINTS
+# ============================================================================
+
+@app.get("/api/gcs/health", tags=["Cloud Storage"], summary="Verificar Configuración de GCS")
+async def gcs_health():
+    """
+    Verifica la configuración y conectividad con Google Cloud Storage.
+    
+    **Retorna:**
+    - Estado de configuración (si las credenciales están configuradas)
+    - Nombre del bucket configurado
+    - Resultado del test de conexión
+    - Información sobre el bucket (si la conexión es exitosa)
+    """
+    credentials_configured = bool(GCS_CREDENTIALS_BASE64)
+    
+    response = {
+        "configured": credentials_configured,
+        "bucket_name": GCS_BUCKET_NAME,
+        "connection_test": {
+            "status": "not_tested",
+            "message": ""
+        }
+    }
+    
+    if credentials_configured:
+        try:
+            client = get_gcs_client()
+            bucket = client.bucket(GCS_BUCKET_NAME)
+            
+            # Test if bucket exists and is accessible
+            if bucket.exists():
+                response["connection_test"]["status"] = "success"
+                response["connection_test"]["message"] = "Conexión exitosa con Google Cloud Storage"
+                response["connection_test"]["bucket_exists"] = True
+            else:
+                response["connection_test"]["status"] = "error"
+                response["connection_test"]["message"] = f"El bucket {GCS_BUCKET_NAME} no existe o no es accesible"
+                response["connection_test"]["bucket_exists"] = False
+        
+        except HTTPException:
+            raise
+        except Exception as e:
+            response["connection_test"]["status"] = "error"
+            response["connection_test"]["message"] = f"Error: {str(e)}"
+    else:
+        response["connection_test"]["status"] = "not_configured"
+        response["connection_test"]["message"] = "Credenciales GCS no configuradas"
+    
+    return response
+
+
+@app.get("/api/gcs/files", tags=["Cloud Storage"], summary="Listar Archivos del Bucket")
+async def list_gcs_files(prefix: Optional[str] = None, max_results: Optional[int] = 1000):
+    """
+    Lista todos los archivos en el bucket de Google Cloud Storage.
+    
+    **Parámetros opcionales:**
+    - `prefix`: Filtrar archivos por prefijo (ej: 'reports/' para listar solo archivos en la carpeta reports)
+    - `max_results`: Número máximo de resultados a retornar (default: 1000)
+    
+    **Retorna:**
+    - Lista de archivos con metadata completa:
+      - name: nombre del archivo
+      - size: tamaño en bytes
+      - size_mb: tamaño en megabytes
+      - created: fecha de creación
+      - updated: fecha de última modificación
+      - content_type: tipo MIME del archivo
+      - md5_hash: hash MD5 del contenido
+      - public_url: URL pública (si el archivo es público)
+    - Contador total de archivos
+    - Tamaño total en el bucket
+    
+    **Errores posibles:**
+    - 400: Credenciales no configuradas
+    - 500: Error al acceder al bucket
+    """
+    try:
+        client = get_gcs_client()
+        bucket = client.bucket(GCS_BUCKET_NAME)
+        
+        # List blobs with optional prefix filter
+        blobs = list(bucket.list_blobs(prefix=prefix, max_results=max_results))
+        
+        files = []
+        total_size = 0
+        
+        for blob in blobs:
+            file_info = {
+                "name": blob.name,
+                "size": blob.size,
+                "size_mb": round(blob.size / (1024 * 1024), 2) if blob.size else 0,
+                "created": blob.time_created.isoformat() if blob.time_created else None,
+                "updated": blob.updated.isoformat() if blob.updated else None,
+                "content_type": blob.content_type,
+                "md5_hash": blob.md5_hash,
+                "public_url": blob.public_url if blob.public_url else None
+            }
+            files.append(file_info)
+            total_size += blob.size if blob.size else 0
+        
+        return {
+            "status": "success",
+            "bucket": GCS_BUCKET_NAME,
+            "prefix": prefix,
+            "count": len(files),
+            "total_size_bytes": total_size,
+            "total_size_mb": round(total_size / (1024 * 1024), 2),
+            "files": files
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al listar archivos: {str(e)}")
+
+
+@app.post("/api/gcs/upload", tags=["Cloud Storage"], summary="Subir Archivo al Bucket")
+async def upload_to_gcs(file: UploadFile = File(...), destination_path: Optional[str] = None):
+    """
+    Sube un archivo al bucket de Google Cloud Storage.
+    
+    **Parámetros:**
+    - `file`: Archivo a subir
+    - `destination_path`: Ruta de destino en el bucket (opcional, por defecto usa el nombre del archivo)
+    
+    **Retorna:**
+    - Información del archivo subido
+    - URL pública del archivo
+    - Metadata completa
+    
+    **Errores posibles:**
+    - 400: Credenciales no configuradas
+    - 500: Error al subir el archivo
+    """
+    try:
+        client = get_gcs_client()
+        bucket = client.bucket(GCS_BUCKET_NAME)
+        
+        # Use provided destination path or default to filename
+        blob_name = destination_path if destination_path else file.filename
+        blob = bucket.blob(blob_name)
+        
+        # Read file content
+        contents = await file.read()
+        
+        # Upload to GCS
+        blob.upload_from_string(
+            contents,
+            content_type=file.content_type
+        )
+        
+        # Reload to get updated metadata
+        blob.reload()
+        
+        return {
+            "status": "success",
+            "message": "Archivo subido exitosamente",
+            "file": {
+                "name": blob.name,
+                "size": blob.size,
+                "size_mb": round(blob.size / (1024 * 1024), 2) if blob.size else 0,
+                "created": blob.time_created.isoformat() if blob.time_created else None,
+                "updated": blob.updated.isoformat() if blob.updated else None,
+                "content_type": blob.content_type,
+                "md5_hash": blob.md5_hash,
+                "public_url": blob.public_url,
+                "bucket": GCS_BUCKET_NAME
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al subir archivo: {str(e)}")
+
+
+@app.get("/api/gcs/download/{file_path:path}", tags=["Cloud Storage"], summary="Descargar Archivo del Bucket")
+async def download_from_gcs(file_path: str):
+    """
+    Descarga un archivo del bucket de Google Cloud Storage.
+    
+    **Parámetros:**
+    - `file_path`: Ruta del archivo en el bucket
+    
+    **Retorna:**
+    - Archivo como respuesta de streaming
+    
+    **Errores posibles:**
+    - 400: Credenciales no configuradas
+    - 404: Archivo no encontrado
+    - 500: Error al descargar el archivo
+    """
+    try:
+        client = get_gcs_client()
+        bucket = client.bucket(GCS_BUCKET_NAME)
+        blob = bucket.blob(file_path)
+        
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {file_path}")
+        
+        # Download as bytes
+        file_bytes = blob.download_as_bytes()
+        
+        # Return as streaming response
+        return StreamingResponse(
+            io.BytesIO(file_bytes),
+            media_type=blob.content_type or "application/octet-stream",
+            headers={
+                "Content-Disposition": f"attachment; filename={Path(file_path).name}"
+            }
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al descargar archivo: {str(e)}")
+
+
+@app.delete("/api/gcs/delete/{file_path:path}", tags=["Cloud Storage"], summary="Eliminar Archivo del Bucket")
+async def delete_from_gcs(file_path: str):
+    """
+    Elimina un archivo del bucket de Google Cloud Storage.
+    
+    **Parámetros:**
+    - `file_path`: Ruta del archivo en el bucket
+    
+    **Retorna:**
+    - Confirmación de eliminación
+    - Información del archivo eliminado
+    
+    **Errores posibles:**
+    - 400: Credenciales no configuradas
+    - 404: Archivo no encontrado
+    - 500: Error al eliminar el archivo
+    """
+    try:
+        client = get_gcs_client()
+        bucket = client.bucket(GCS_BUCKET_NAME)
+        blob = bucket.blob(file_path)
+        
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {file_path}")
+        
+        # Get file info before deleting
+        file_info = {
+            "name": blob.name,
+            "size": blob.size,
+            "size_mb": round(blob.size / (1024 * 1024), 2) if blob.size else 0,
+            "content_type": blob.content_type
+        }
+        
+        # Delete the blob
+        blob.delete()
+        
+        return {
+            "status": "success",
+            "message": "Archivo eliminado exitosamente",
+            "deleted_file": file_info
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al eliminar archivo: {str(e)}")
+
+
+@app.get("/api/gcs/metadata/{file_path:path}", tags=["Cloud Storage"], summary="Obtener Metadata de Archivo")
+async def get_file_metadata(file_path: str):
+    """
+    Obtiene la metadata completa de un archivo en el bucket.
+    
+    **Parámetros:**
+    - `file_path`: Ruta del archivo en el bucket
+    
+    **Retorna:**
+    - Metadata completa del archivo:
+      - name: nombre del archivo
+      - size: tamaño en bytes y MB
+      - created: fecha de creación
+      - updated: fecha de última modificación
+      - content_type: tipo MIME
+      - md5_hash: hash MD5
+      - crc32c: checksum CRC32C
+      - etag: ETag del archivo
+      - generation: versión del archivo
+      - metageneration: versión de metadata
+      - storage_class: clase de almacenamiento
+      - public_url: URL pública
+    
+    **Errores posibles:**
+    - 400: Credenciales no configuradas
+    - 404: Archivo no encontrado
+    - 500: Error al obtener metadata
+    """
+    try:
+        client = get_gcs_client()
+        bucket = client.bucket(GCS_BUCKET_NAME)
+        blob = bucket.blob(file_path)
+        
+        if not blob.exists():
+            raise HTTPException(status_code=404, detail=f"Archivo no encontrado: {file_path}")
+        
+        # Reload to get fresh metadata
+        blob.reload()
+        
+        return {
+            "status": "success",
+            "file": {
+                "name": blob.name,
+                "bucket": GCS_BUCKET_NAME,
+                "size": {
+                    "bytes": blob.size,
+                    "mb": round(blob.size / (1024 * 1024), 2) if blob.size else 0,
+                    "kb": round(blob.size / 1024, 2) if blob.size else 0
+                },
+                "dates": {
+                    "created": blob.time_created.isoformat() if blob.time_created else None,
+                    "updated": blob.updated.isoformat() if blob.updated else None,
+                },
+                "checksums": {
+                    "md5_hash": blob.md5_hash,
+                    "crc32c": blob.crc32c,
+                    "etag": blob.etag
+                },
+                "content_type": blob.content_type,
+                "storage_class": blob.storage_class,
+                "generation": blob.generation,
+                "metageneration": blob.metageneration,
+                "public_url": blob.public_url,
+                "media_link": blob.media_link
+            }
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al obtener metadata: {str(e)}")
