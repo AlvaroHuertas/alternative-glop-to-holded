@@ -251,5 +251,81 @@ La respuesta mostrará:
 ## 🔧 Archivos del proyecto
 
 - `main.py` - Aplicación FastAPI
-- `requirements.txt` - Dependencias de Python
-- `Procfile` - Comando para iniciar el servidor en Railway
+### `POST /api/holded/stock/update-from-gcs`
+
+Actualiza masivamente el stock en Holded tomando como fuente un archivo CSV alojado en Google Cloud Storage. Ideal para integraciones automáticas donde se sube un reporte de ventas a GCS.
+
+#### Características
+
+- ✅ **Lectura desde GCS**: Descarga y procesa archivos directamente de la nube (`gs://...`).
+- ✅ **Soporte de Encoding**: Detecta automáticamente UTF-8 o Latin-1 (común en Excel).
+- ✅ **Mapeo Inteligente**:
+    - Busca productos por SKU o código de barras.
+    - Asigna almacenes basándose en el nombre de la terminal (con soporte para nombres como "Tienda Cáceres", "Tienda Murcia", etc.).
+- ✅ **Cálculo de Stock**:
+    - Resta las unidades vendidas ("UNIDADES" del CSV) al stock actual de Holded.
+    - Soporta productos simples y variantes.
+- ✅ **Respuesta Detallada**:
+    - Muestra el stock *antes* y *después* de la actualización.
+    - Reporta errores específicos (fila, SKU, producto) sin detener el proceso completo.
+- ✅ **Dry Run**: Por defecto (`dry_run=true`) simula todo el proceso sin tocar Holded.
+
+#### Parámetros (`JSON`)
+
+| Campo | Tipo | Requerido | Descripción |
+|-------|------|-----------|-------------|
+| `gs_uri` | string | ✅ | URI del archivo en GCS (ej: `gs://bucket/archivo.csv`) |
+| `dry_run` | boolean | ❌ | Si es `true`, simula. Si es `false`, ejecuta. (Default: `true`) |
+
+#### Formato CSV Esperado
+
+El archivo debe usar punto y coma (`;`) como separador.
+
+| Columna (Header) | Descripción |
+|------------------|-------------|
+| `TERMINAL` | Nombre del almacén/tienda (ej: "TIENDA CACERES") |
+| `C.BARRAS ARTICULO` | SKU o Código de barras del producto |
+| `UNIDADES` | Cantidad vendida (se restará del stock) |
+| `ARTÍCULO` / `ARTICULO` | Nombre del producto (opcional, para logs de error) |
+
+#### Ejemplo de Uso
+
+**Petición:**
+```bash
+curl -X POST "http://localhost:8000/api/holded/stock/update-from-gcs" \
+     -H "Content-Type: application/json" \
+     -d '{
+           "gs_uri": "gs://mi-bucket/ventas-caceres.csv",
+           "dry_run": true
+         }'
+```
+
+**Respuesta:**
+```json
+{
+  "processed": 43,
+  "updated": 1,
+  "errors": [
+    {
+      "row": 35,
+      "sku": "156517431",
+      "product": "PRODUCTO DESC",
+      "error": "SKU no encontrado",
+      "terminal": "TIENDA CACERES"
+    }
+  ],
+  "updates": [
+    {
+      "row": 0,
+      "sku": "SKU-123",
+      "product": "Producto Ejemplo",
+      "warehouse": "TIENDA CACERES",
+      "units_sold": 5.0,
+      "adjustment": -5.0,
+      "current_stock": 20,
+      "new_stock": 15.0,
+      "status": "simulated"
+    }
+  ]
+}
+```

@@ -13,7 +13,7 @@ import base64
 import json
 import tempfile
 from google.cloud import storage
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -952,6 +952,344 @@ async def update_stock_by_sku(request: StockUpdateRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+
+# Request model for GCS stock update
+class StockUpdateFromGCSRequest(BaseModel):
+    gs_uri: str = Field(..., description="URI del archivo CSV en GCS (ej: gs://bucket/file.csv)")
+    dry_run: bool = Field(default=True, description="Si es True, simula la actualización sin cambios reales")
+
+# Response models for Swagger
+class UpdateErrorDetail(BaseModel):
+    row: int = Field(..., description="Número de fila en el CSV (0-indexed)")
+    sku: str = Field(..., description="SKU del producto")
+    product: str = Field("Unknown", description="Nombre del producto extraído del CSV")
+    terminal: str = Field(..., description="Nombre de la terminal/almacén")
+    error: str = Field(..., description="Detalle del error")
+
+class StockUpdateResult(BaseModel):
+    row: int = Field(..., description="Número de fila en el CSV")
+    sku: str = Field(..., description="SKU del producto")
+    product: str = Field(..., description="Nombre del producto (Holded)")
+    warehouse: str = Field(..., description="Nombre del almacén (CSV)")
+    warehouse_id: str = Field(..., description="ID del almacén (Holded)")
+    units_sold: float = Field(..., description="Unidades del CSV (vendidas)")
+    adjustment: float = Field(..., description="Ajuste calculado (-unidades)")
+    current_stock: float = Field(..., description="Stock antes de actualizar")
+    new_stock: float = Field(..., description="Stock calculado después del ajuste")
+    status: str = Field(..., description="success, error, simulated")
+    error_detail: Optional[str] = Field(None, description="Detalle del error si falló")
+
+class GCSStockUpdateResponse(BaseModel):
+    processed: int = Field(..., description="Total de filas procesadas")
+    updated: int = Field(..., description="Total de actualizaciones exitosas (o simuladas)")
+    errors: List[UpdateErrorDetail] = Field(..., description="Lista de errores encontrados")
+    updates: List[StockUpdateResult] = Field(..., description="Detalle de las actualizaciones")
+
+@app.post("/api/holded/stock/update-from-gcs", tags=["Holded"], summary="Actualizar Stock desde CSV en GCS", response_model=GCSStockUpdateResponse)
+async def update_stock_from_gcs(request: StockUpdateFromGCSRequest):
+    """
+    Actualiza el stock en Holded procesando un archivo CSV almacenado en Google Cloud Storage.
+    
+    **Proceso:**
+    1. Descarga el CSV desde GCS.
+    2. Obtiene todos los productos y almacenes de Holded.
+    3. Obtiene el STOCK actual de cada almacén relevante.
+    4. Mapea las filas del CSV a productos y almacenes.
+    5. Calcula los ajustes de stock (resta las unidades vendidas).
+    6. Ejecuta o simula las actualizaciones.
+    
+    **Formato CSV esperado:**
+    - Separador: punto y coma (;)
+    - Columnas clave: 'TERMINAL', 'C.BARRAS ARTICULO', 'UNIDADES'
+    
+    **Retorna:**
+    - Resumen de la operación (total procesado, errores, actualizaciones)
+    - Detalles de cada actualización con stock anterior y posterior
+    """
+    
+    if not HOLDED_API_KEY:
+        raise HTTPException(status_code=400, detail="API key de Holded no configurada")
+        
+    # 1. Parse GS URI
+    if not request.gs_uri.startswith("gs://"):
+        raise HTTPException(status_code=400, detail="La URI debe comenzar con gs://")
+    
+    try:
+        parts = request.gs_uri[5:].split("/", 1)
+        if len(parts) != 2:
+             raise HTTPException(status_code=400, detail="URI inválida. Formato: gs://bucket/path/file.csv")
+        
+        bucket_name = parts[0]
+        blob_name = parts[1]
+        
+        # 2. Download CSV
+        gcs = get_gcs_client()
+        bucket = gcs.bucket(bucket_name)
+        blob_name = blob_name.replace("%20", " ") # Handle encoded spaces if any
+        blob = bucket.blob(blob_name)
+        
+        if not blob.exists():
+             raise HTTPException(status_code=404, detail=f"Archivo no encontrado en GCS: {request.gs_uri}")
+             
+        content_bytes = blob.download_as_bytes()
+        
+        # Try to read with UTF-8, fallback to latin-1 (common in Excel/Spain)
+        try:
+            df = pd.read_csv(io.BytesIO(content_bytes), sep=";", encoding='utf-8')
+        except UnicodeDecodeError:
+            df = pd.read_csv(io.BytesIO(content_bytes), sep=";", encoding='latin-1')
+        
+        # Verify columns
+        required_cols = ["TERMINAL", "C.BARRAS ARTICULO", "UNIDADES"]
+        for col in required_cols:
+            if col not in df.columns:
+                raise HTTPException(status_code=400, detail=f"Columna faltante en CSV: {col}")
+                
+        # 3. Fetch Holded Data (Bulk)
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "key": HOLDED_API_KEY,
+                "accept": "application/json",
+                "content-type": "application/json"
+            }
+            
+            # Fetch Warehouses
+            warehouses_url = "https://api.holded.com/api/invoicing/v1/warehouses"
+            warehouses_resp = await client.get(warehouses_url, headers=headers, timeout=30.0)
+            if warehouses_resp.status_code != 200:
+                raise HTTPException(status_code=502, detail=f"Error al obtener almacenes: {warehouses_resp.status_code}")
+            
+            warehouses = warehouses_resp.json()
+            
+            # Map Warehouses: Normalized Name -> ID
+            warehouse_map = {}
+            for w in warehouses:
+                name_norm = w.get('name', '').upper().strip()
+                warehouse_map[name_norm] = w['id']
+                warehouse_map[w['id']] = w['id']
+            
+            # Fetch Products
+            products_url = "https://api.holded.com/api/invoicing/v1/products"
+            products_resp = await client.get(products_url, headers=headers, timeout=60.0)
+             
+            if products_resp.status_code != 200:
+                raise HTTPException(status_code=502, detail=f"Error al obtener productos: {products_resp.status_code}")
+                
+            products = products_resp.json()
+            
+            # Map Products: SKU -> Product Info
+            product_map = {}
+            for p in products:
+                # Main product
+                if p.get('sku'):
+                    product_map[str(p['sku']).strip()] = {
+                        'id': p['id'],
+                        'name': p.get('name', ''),
+                        'is_variant': False,
+                        'variant_id': None
+                    }
+                
+                # Variants
+                for v in p.get('variants', []):
+                    if v.get('sku'):
+                        product_map[str(v['sku']).strip()] = {
+                            'id': p['id'], # Use main product ID for the API call
+                            'name': f"{p.get('name','')} - {v.get('name','')}",
+                            'is_variant': True,
+                            'variant_id': v['id']
+                        }
+
+            # 4. Fetch Stock for ALL Warehouses (Optimized Strategy)
+            # Instead of fetching per item, we fetch per warehouse present in the CSV?
+            # Or just fetch all relevant warehouses.
+            # Identify used warehouses in CSV
+            terminals_in_csv = df["TERMINAL"].unique()
+            used_warehouse_ids = set()
+            
+            # Helper to resolve warehouse ID (same logic as loop)
+            def resolve_warehouse_id(term_name):
+                term_upper = str(term_name).upper().strip()
+                w_id = warehouse_map.get(term_upper)
+                if not w_id:
+                    if "MURCIA" in term_upper: w_id = warehouse_map.get("TIENDA MURCIA")
+                    elif "SALAMANCA" in term_upper: w_id = warehouse_map.get("TIENDA SALAMANCA")
+                    elif "CACERES" in term_upper or "CÁCERES" in term_upper:
+                        for key, val in warehouse_map.items():
+                             if "CÁCERES" in key and "TIENDA" in key: return val
+                        return "685036750bb898af5e05dd11"
+                return w_id
+
+            for term in terminals_in_csv:
+                w_id = resolve_warehouse_id(term)
+                if w_id:
+                    used_warehouse_ids.add(w_id)
+            
+            # Fetch stock for these warehouses
+            # Map: warehouse_id -> { product_id -> { stock: X, variants: { id: stock } } }
+            stock_data_map = {}
+            
+            for w_id in used_warehouse_ids:
+                stock_url = f"https://api.holded.com/api/invoicing/v1/warehouses/{w_id}/stock"
+                s_resp = await client.get(stock_url, headers=headers, timeout=30.0)
+                if s_resp.status_code == 200:
+                    data = s_resp.json()
+                    # Structure: { "warehouse": { "products": [ { "product_id": "...", "stock": 5, "variants": { "varId": 2 } } ] } }
+                    w_prods = data.get("warehouse", {}).get("products", [])
+                    stock_data_map[w_id] = {}
+                    for item in w_prods:
+                        pid = item.get("product_id")
+                        if pid:
+                            stock_data_map[w_id][pid] = {
+                                "stock": item.get("stock", 0),
+                                "variants": item.get("variants", {})
+                            }
+
+            # 5. Process CSV Rows
+            results = {
+                "processed": 0,
+                "updated": 0,
+                "errors": [],
+                "updates": []
+            }
+            
+            for index, row in df.iterrows():
+                results["processed"] += 1
+                
+                try:
+                    terminal = str(row["TERMINAL"]).strip()
+                    sku = str(row["C.BARRAS ARTICULO"]).strip()
+                    
+                    # Extract product name from CSV for error context
+                    # Column name might be 'ARTÍCULO' (Latin-1/UTF-8 issue) or 'ARTICULO'
+                    # We check available columns
+                    # Extract product name from CSV for error context
+                    csv_product = "Unknown"
+                    for col in df.columns:
+                        # Normalize column name: remove special chars, upper case
+                        normalized = str(col).upper().replace("Í", "I").replace("í", "I").strip()
+                        # Strict check to avoid matching "C.BARRAS ARTICULO"
+                        if normalized == "ARTICULO" or normalized == "ARTCULO":
+                             csv_product = str(row[col]).strip()
+                             break
+                             
+                    units_val = str(row["UNIDADES"]).replace(',', '.')
+                    if not units_val or units_val.lower() == 'nan':
+                         continue
+                    units = float(units_val)
+                except Exception as e:
+                    results["errors"].append({
+                        "row": index,
+                        "error": f"Error parsing data: {str(e)}",
+                        "sku": sku if 'sku' in locals() else "Unknown",
+                        "product": csv_product if 'csv_product' in locals() else "Unknown",
+                        "terminal": terminal if 'terminal' in locals() else "Unknown"
+                    })
+                    continue
+                
+                # Lookup Warehouse
+                w_id = resolve_warehouse_id(terminal)
+                if not w_id:
+                    results["errors"].append({
+                        "row": index,
+                        "error": f"Almacén '{terminal}' no encontrado",
+                        "sku": sku,
+                        "product": csv_product,
+                        "terminal": terminal
+                    })
+                    continue
+                
+                # Lookup Product
+                p_info = product_map.get(sku)
+                if not p_info:
+                    results["errors"].append({
+                        "row": index,
+                        "error": f"SKU '{sku}' no encontrado",
+                        "sku": sku,
+                        "product": csv_product,
+                        "terminal": terminal
+                    })
+                    continue
+                    
+                # Calculate Adjustment
+                adjustment = -1 * units
+                
+                # Find Current Stock
+                current_stock = 0
+                main_pid = p_info['id']
+                is_variant = p_info['is_variant']
+                var_id = p_info['variant_id']
+                
+                # Check our stock map
+                if w_id in stock_data_map and main_pid in stock_data_map[w_id]:
+                    item_stock_data = stock_data_map[w_id][main_pid]
+                    if is_variant and var_id:
+                        # Variant stock is in "variants" dict: { "variantId": stock }
+                        # Wait, structure in `get_stock_by_warehouse` response was simple dict?
+                        # Let's check api response structure from `get_stock_by_warehouse` implementation:
+                        # `variants_stock = stock_item.get('variants', {})`
+                        # `current_stock = variants_stock.get(variant_id, 0)`
+                        # IMPORTANT: JSON keys are strings
+                        variants_data = item_stock_data.get("variants", {})
+                        if variants_data and isinstance(variants_data, dict):
+                            current_stock = variants_data.get(var_id, 0)
+                        else:
+                             current_stock = 0
+                    else:
+                        current_stock = item_stock_data.get("stock", 0)
+                
+                new_stock = current_stock + adjustment
+                
+                # Prepare Update logic
+                item_id = var_id if is_variant else main_pid
+                
+                stock_payload = {
+                    "stock": {
+                        w_id: {
+                            item_id: adjustment
+                        }
+                    }
+                }
+                
+                update_info = {
+                    "row": index,
+                    "sku": sku,
+                    "product": p_info['name'],
+                    "warehouse": terminal,
+                    "warehouse_id": w_id,
+                    "units_sold": units,
+                    "adjustment": adjustment,
+                    "current_stock": current_stock,
+                    "new_stock": new_stock
+                }
+                
+                if request.dry_run:
+                    update_info["status"] = "simulated"
+                    results["updates"].append(update_info)
+                else:
+                    # Execute Update
+                    update_url = f"https://api.holded.com/api/invoicing/v1/products/{main_pid}/stock"
+                    upd_resp = await client.put(update_url, headers=headers, json=stock_payload, timeout=10.0)
+                    
+                    if upd_resp.status_code in [200, 204]:
+                        update_info["status"] = "success"
+                        results["updated"] += 1
+                        results["updates"].append(update_info)
+                    else:
+                        update_info["status"] = "error"
+                        update_info["error_detail"] = f"HTTP {upd_resp.status_code} - {upd_resp.text}"
+                        results["errors"].append({
+                            "row": index, 
+                            "error": f"API Error: {upd_resp.text}", 
+                            "sku": sku, 
+                            "terminal": terminal
+                        })
+
+            return results
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en procesado: {str(e)}")
 
 # ============================================================================
 # GOOGLE CLOUD STORAGE ENDPOINTS
