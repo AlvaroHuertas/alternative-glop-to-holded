@@ -963,6 +963,7 @@ class UpdateErrorDetail(BaseModel):
     row: int = Field(..., description="Número de fila en el CSV (0-indexed)")
     sku: str = Field(..., description="SKU del producto")
     product: str = Field("Unknown", description="Nombre del producto extraído del CSV")
+    units: Optional[float] = Field(None, description="Unidades vendidas (del CSV)")
     terminal: str = Field(..., description="Nombre de la terminal/almacén")
     error: str = Field(..., description="Detalle del error")
 
@@ -1160,9 +1161,6 @@ async def update_stock_from_gcs(request: StockUpdateFromGCSRequest):
                     sku = str(row["C.BARRAS ARTICULO"]).strip()
                     
                     # Extract product name from CSV for error context
-                    # Column name might be 'ARTÍCULO' (Latin-1/UTF-8 issue) or 'ARTICULO'
-                    # We check available columns
-                    # Extract product name from CSV for error context
                     csv_product = "Unknown"
                     for col in df.columns:
                         # Normalize column name: remove special chars, upper case
@@ -1182,6 +1180,7 @@ async def update_stock_from_gcs(request: StockUpdateFromGCSRequest):
                         "error": f"Error parsing data: {str(e)}",
                         "sku": sku if 'sku' in locals() else "Unknown",
                         "product": csv_product if 'csv_product' in locals() else "Unknown",
+                        "units": units if 'units' in locals() else None,
                         "terminal": terminal if 'terminal' in locals() else "Unknown"
                     })
                     continue
@@ -1194,6 +1193,7 @@ async def update_stock_from_gcs(request: StockUpdateFromGCSRequest):
                         "error": f"Almacén '{terminal}' no encontrado",
                         "sku": sku,
                         "product": csv_product,
+                        "units": units,
                         "terminal": terminal
                     })
                     continue
@@ -1206,6 +1206,7 @@ async def update_stock_from_gcs(request: StockUpdateFromGCSRequest):
                         "error": f"SKU '{sku}' no encontrado",
                         "sku": sku,
                         "product": csv_product,
+                        "units": units,
                         "terminal": terminal
                     })
                     continue
@@ -1281,6 +1282,8 @@ async def update_stock_from_gcs(request: StockUpdateFromGCSRequest):
                             "row": index, 
                             "error": f"API Error: {upd_resp.text}", 
                             "sku": sku, 
+                            "product": p_info['name'],
+                            "units": units,
                             "terminal": terminal
                         })
 
