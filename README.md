@@ -310,6 +310,7 @@ curl -X POST "http://localhost:8000/api/holded/stock/update-from-gcs" \
       "row": 35,
       "sku": "156517431",
       "product": "PRODUCTO DESC",
+      "units": 2.0,
       "error": "SKU no encontrado",
       "terminal": "TIENDA CACERES"
     }
