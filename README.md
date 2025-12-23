@@ -250,7 +250,12 @@ La respuesta mostrará:
 
 ## 🔧 Archivos del proyecto
 
-- `main.py` - Aplicación FastAPI
+- `main.py` - Punto de entrada de la aplicación
+- `app/` - Código fuente de la aplicación
+  - `api/routes/` - Definición de endpoints (Holded, GCS, CSV)
+  - `services/` - Lógica de negocio e integraciones
+  - `models/` - Modelos de datos Pydantic
+  - `core/` - Configuración y variables de entorno
 ### `POST /api/holded/stock/update-from-gcs`
 
 Actualiza masivamente el stock en Holded tomando como fuente un archivo CSV alojado en Google Cloud Storage. Ideal para integraciones automáticas donde se sube un reporte de ventas a GCS.
