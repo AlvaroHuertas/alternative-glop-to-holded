@@ -1450,6 +1450,129 @@ body {
     font-weight: 700;
 }
 
+/* Apply Section Styles */
+.apply-section {
+    margin-top: 2rem;
+    padding: 1.5rem;
+    background: rgba(245, 158, 11, 0.05);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    border-radius: 12px;
+    animation: slideInUp 0.4s ease-out;
+}
+
+.apply-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 8px;
+    color: var(--warning-color);
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.apply-warning svg {
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.apply-btn {
+    width: 100%;
+    padding: 1rem 2rem;
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 10px 30px rgba(16, 185, 129, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+.apply-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+    transition: left 0.5s ease;
+}
+
+.apply-btn:hover::before {
+    left: 100%;
+}
+
+.apply-btn:hover:not(:disabled) {
+    transform: translateY(-2px);
+    box-shadow: 0 15px 40px rgba(16, 185, 129, 0.4);
+}
+
+.apply-btn:active:not(:disabled) {
+    transform: translateY(0);
+}
+
+.apply-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    box-shadow: none;
+}
+
+/* Manual Review Notice */
+.manual-review-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
+    margin-bottom: 1rem;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+    border-radius: 8px;
+    color: var(--warning-color);
+    font-size: 0.9rem;
+}
+
+.manual-review-notice svg {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+}
+
+/* Real Update Section - uses simulation-section styles */
+.real-update-section {
+    border-top-color: var(--success-color);
+}
+
+.real-update-section .data-title {
+    background: linear-gradient(135deg, var(--text-primary) 0%, var(--success-color) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+/* Success title color */
+.subsection-title.success-title {
+    color: var(--success-color);
+}
+
+/* Adjustment cell styling */
+.adjustment-cell {
+    font-weight: 600;
+}
+
 /* Holded queries section update */
 .holded-queries-section .section-title {
     display: none; /* Hide section title when inside holded page */
@@ -1493,4 +1616,121 @@ body {
         border-bottom: 1px solid var(--border-color);
         text-align: center;
     }
+}
+
+/* Subsection Header with Fullscreen Button */
+.subsection-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.fullscreen-btn {
+    background: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: var(--accent-primary);
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+}
+
+.fullscreen-btn:hover {
+    background: rgba(16, 185, 129, 0.2);
+    transform: scale(1.1);
+}
+
+.fullscreen-icon {
+    width: 18px;
+    height: 18px;
+}
+
+/* Fullscreen Modal */
+.fullscreen-modal {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.95);
+    z-index: 1000;
+    padding: 2rem;
+    box-sizing: border-box;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.fullscreen-modal.active {
+    display: block;
+}
+
+.fullscreen-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.5rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.fullscreen-modal-title {
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.fullscreen-modal-title svg {
+    color: var(--accent-primary);
+    width: 24px;
+    height: 24px;
+}
+
+.close-fullscreen-btn {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--error-color);
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+.close-fullscreen-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    transform: translateY(-2px);
+}
+
+.close-fullscreen-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+.fullscreen-table-container {
+    height: calc(100vh - 150px);
+    overflow: auto;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid var(--border-color);
+}
+
+.fullscreen-table-container .data-table {
+    font-size: 1rem;
+}
+
+.fullscreen-table-container .data-table th,
+.fullscreen-table-container .data-table td {
+    padding: 1.25rem 1.5rem;
 }

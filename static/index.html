@@ -166,12 +166,19 @@
 
                         <!-- Updates Table -->
                         <div class="results-subsection" id="updatesSubsection" style="display: none;">
-                            <h3 class="subsection-title">
-                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                    <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-                                </svg>
-                                Actualizaciones que se aplicarían
-                            </h3>
+                            <div class="subsection-header">
+                                <h3 class="subsection-title">
+                                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                    Actualizaciones que se aplicarían
+                                </h3>
+                                <button class="fullscreen-btn" id="fullscreenUpdatesBtn" title="Ver en pantalla completa">
+                                    <svg class="fullscreen-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                        <path d="M8 3H5C3.89543 3 3 3.89543 3 5V8M21 8V5C21 3.89543 20.1046 3 19 3H16M16 21H19C20.1046 21 21 20.1046 21 19V16M3 16V19C3 20.1046 3.89543 21 5 21H8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                    </svg>
+                                </button>
+                            </div>
                             <div class="table-container">
                                 <table class="data-table simulation-table" id="updatesTable">
                                     <thead>
@@ -197,6 +204,12 @@
                                 </svg>
                                 Errores encontrados
                             </h3>
+                            <div class="manual-review-notice">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span>Estos productos deberán revisarse manualmente en Holded</span>
+                            </div>
                             <div class="table-container">
                                 <table class="data-table errors-table" id="errorsTable">
                                     <thead>
@@ -213,6 +226,115 @@
                                 </table>
                             </div>
                         </div>
+
+                        <!-- Apply Changes Button -->
+                        <div class="apply-section" id="applySection" style="display: none;">
+                            <div class="apply-warning">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 9V13M12 17H12.01M5.07183 19H18.9282C20.4678 19 21.4301 17.3333 20.6603 16L13.7321 4C12.9623 2.66667 11.0377 2.66667 10.2679 4L3.33975 16C2.56995 17.3333 3.53223 19 5.07183 19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span>Esta acción modificará la base de datos de Holded. Los cambios no se pueden deshacer automáticamente.</span>
+                            </div>
+                            <button class="apply-btn" id="applyBtn">
+                                <span class="btn-text">Aplicar Cambios en Holded</span>
+                                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M5 12L10 17L20 7" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real Update Results Section -->
+                <div class="simulation-section real-update-section" id="realUpdateSection" style="display: none;">
+                    <div class="data-header" id="realUpdateHeaderToggle">
+                        <div class="data-header-left">
+                            <h2 class="data-title">Resultados de Actualización Real</h2>
+                            <button class="toggle-btn" id="toggleRealUpdateBtn" aria-label="Toggle real update">
+                                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <button class="clear-btn" id="clearRealUpdateBtn">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Limpiar
+                        </button>
+                    </div>
+                    <div class="table-collapsible-content" id="realUpdateContent">
+                        <!-- Summary Stats -->
+                        <div class="simulation-summary">
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Procesados:</span>
+                                <span class="summary-value" id="realProcessed">0</span>
+                            </div>
+                            <div class="summary-item success-item">
+                                <span class="summary-label">Actualizados:</span>
+                                <span class="summary-value" id="realUpdated">0</span>
+                            </div>
+                            <div class="summary-item error-item">
+                                <span class="summary-label">Errores:</span>
+                                <span class="summary-value" id="realErrors">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Real Updates Table -->
+                        <div class="results-subsection" id="realUpdatesSubsection" style="display: none;">
+                            <h3 class="subsection-title success-title">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                Actualizaciones aplicadas
+                            </h3>
+                            <div class="table-container">
+                                <table class="data-table simulation-table" id="realUpdatesTable">
+                                    <thead>
+                                        <tr>
+                                            <th>SKU</th>
+                                            <th>Producto</th>
+                                            <th>Almacén</th>
+                                            <th class="numeric">Stock Anterior</th>
+                                            <th class="numeric">Ajuste</th>
+                                            <th class="numeric">Stock Nuevo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="realUpdatesTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Real Errors Table -->
+                        <div class="results-subsection errors-subsection" id="realErrorsSubsection" style="display: none;">
+                            <h3 class="subsection-title error-title">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                Errores encontrados
+                            </h3>
+                            <div class="manual-review-notice">
+                                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M12 9V13M12 17H12.01M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                <span>Estos productos deberán revisarse manualmente en Holded</span>
+                            </div>
+                            <div class="table-container">
+                                <table class="data-table errors-table" id="realErrorsTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Fila</th>
+                                            <th>SKU</th>
+                                            <th>Producto</th>
+                                            <th>Terminal</th>
+                                            <th>Unidades</th>
+                                            <th>Error</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="realErrorsTableBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -221,6 +343,39 @@
         <footer class="footer">
             <p>© 2025 Alternative CBD. Todos los derechos reservados.</p>
         </footer>
+    </div>
+
+    <!-- Fullscreen Modal -->
+    <div class="fullscreen-modal" id="fullscreenModal">
+        <div class="fullscreen-modal-header">
+            <h2 class="fullscreen-modal-title">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Actualizaciones que se aplicarían
+            </h2>
+            <button class="close-fullscreen-btn" id="closeFullscreenBtn">
+                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                Cerrar
+            </button>
+        </div>
+        <div class="fullscreen-table-container">
+            <table class="data-table simulation-table" id="fullscreenUpdatesTable">
+                <thead>
+                    <tr>
+                        <th>SKU</th>
+                        <th>Producto</th>
+                        <th>Almacén</th>
+                        <th class="numeric">Vendidas</th>
+                        <th class="numeric">Stock Actual</th>
+                        <th class="numeric">Stock Nuevo</th>
+                    </tr>
+                </thead>
+                <tbody id="fullscreenUpdatesTableBody"></tbody>
+            </table>
+        </div>
     </div>
 
     <script src="/static/script.js"></script>
