@@ -2,6 +2,9 @@
 import httpx
 import pandas as pd
 import io
+import json
+import datetime
+from datetime import timezone
 from app.core.config import settings
 from app.models.schemas import StockUpdateRequest, StockUpdateFromGCSRequest
 from app.services.gcs import get_gcs_client
@@ -315,244 +318,304 @@ async def update_stock_by_sku(request: StockUpdateRequest):
         return response_data
 
 async def update_stock_from_gcs(request: StockUpdateFromGCSRequest):
-    if not settings.HOLDED_API_KEY:
-        raise Exception("API key de Holded no configurada")
-        
-    if not request.gs_uri.startswith("gs://"):
-        raise Exception("La URI debe comenzar con gs://")
-    
-    parts = request.gs_uri[5:].split("/", 1)
-    if len(parts) != 2:
-            raise Exception("URI inválida. Formato: gs://bucket/path/file.csv")
-    
-    bucket_name = parts[0]
-    blob_name = parts[1]
-    
-    gcs = get_gcs_client()
-    bucket = gcs.bucket(bucket_name)
-    blob_name = blob_name.replace("%20", " ")
-    blob = bucket.blob(blob_name)
-    
-    if not blob.exists():
-            raise Exception(f"Archivo no encontrado en GCS: {request.gs_uri}")
+    start_time = datetime.datetime.now(timezone.utc)
+    log_data = {
+        "timestamp_start": start_time.isoformat(),
+        "input_uri": request.gs_uri,
+        "dry_run": request.dry_run,
+        "status": "started",
+        "results": None,
+        "error": None
+    }
+
+    async def upload_log(data: dict, bucket_name: str):
+        try:
+            log_client = get_gcs_client()
+            log_bucket = log_client.bucket(bucket_name)
             
-    content_bytes = blob.download_as_bytes()
-    
+            timestamp = datetime.datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+            log_filename = f"logs/stock_update_log_{timestamp}.json"
+            log_blob = log_bucket.blob(log_filename)
+            
+            log_blob.upload_from_string(
+                json.dumps(data, indent=2, default=str),
+                content_type="application/json"
+            )
+            print(f"Log uploaded to gs://{bucket_name}/{log_filename}")
+        except Exception as e:
+            print(f"Failed to upload log: {str(e)}")
+
     try:
-        df = pd.read_csv(io.BytesIO(content_bytes), sep=";", encoding='utf-8')
-    except UnicodeDecodeError:
-        df = pd.read_csv(io.BytesIO(content_bytes), sep=";", encoding='latin-1')
-    
-    required_cols = ["TERMINAL", "C.BARRAS ARTICULO", "UNIDADES"]
-    for col in required_cols:
-        if col not in df.columns:
-            raise Exception(f"Columna faltante en CSV: {col}")
+        if not settings.HOLDED_API_KEY:
+            raise Exception("API key de Holded no configurada")
+        
+        # [NEW] Capture Database Snapshot
+        try:
+            snapshot = await get_stock_by_warehouse()
+            log_data["database_snapshot"] = snapshot
+        except Exception as snapshot_error:
+            log_data["database_snapshot_error"] = str(snapshot_error)
+            print(f"Failed to capture database snapshot: {snapshot_error}")
+
+        if not request.gs_uri.startswith("gs://"):
+            raise Exception("La URI debe comenzar con gs://")
+        
+        parts = request.gs_uri[5:].split("/", 1)
+        if len(parts) != 2:
+                raise Exception("URI inválida. Formato: gs://bucket/path/file.csv")
+        
+        bucket_name = parts[0]
+        blob_name = parts[1]
+        
+        gcs = get_gcs_client()
+        bucket = gcs.bucket(bucket_name)
+        blob_name = blob_name.replace("%20", " ")
+        blob = bucket.blob(blob_name)
+        
+        if not blob.exists():
+                raise Exception(f"Archivo no encontrado en GCS: {request.gs_uri}")
+                
+        content_bytes = blob.download_as_bytes()
+        
+        try:
+            df = pd.read_csv(io.BytesIO(content_bytes), sep=";", encoding='utf-8')
+        except UnicodeDecodeError:
+            df = pd.read_csv(io.BytesIO(content_bytes), sep=";", encoding='latin-1')
+        
+        required_cols = ["TERMINAL", "C.BARRAS ARTICULO", "UNIDADES"]
+        for col in required_cols:
+            if col not in df.columns:
+                raise Exception(f"Columna faltante en CSV: {col}")
+                
+        async with httpx.AsyncClient() as client:
+            headers = {
+                "key": settings.HOLDED_API_KEY,
+                "accept": "application/json",
+                "content-type": "application/json"
+            }
             
-    async with httpx.AsyncClient() as client:
-        headers = {
-            "key": settings.HOLDED_API_KEY,
-            "accept": "application/json",
-            "content-type": "application/json"
-        }
-        
-        warehouses_resp = await client.get("https://api.holded.com/api/invoicing/v1/warehouses", headers=headers, timeout=30.0)
-        if warehouses_resp.status_code != 200:
-            raise Exception(f"Error al obtener almacenes: {warehouses_resp.status_code}")
-        
-        warehouses = warehouses_resp.json()
-        
-        warehouse_map = {}
-        for w in warehouses:
-            name_norm = w.get('name', '').upper().strip()
-            warehouse_map[name_norm] = w['id']
-            warehouse_map[w['id']] = w['id']
-        
-        products_resp = await client.get("https://api.holded.com/api/invoicing/v1/products", headers=headers, timeout=60.0)
+            warehouses_resp = await client.get("https://api.holded.com/api/invoicing/v1/warehouses", headers=headers, timeout=30.0)
+            if warehouses_resp.status_code != 200:
+                raise Exception(f"Error al obtener almacenes: {warehouses_resp.status_code}")
             
-        if products_resp.status_code != 200:
-            raise Exception(f"Error al obtener productos: {products_resp.status_code}")
+            warehouses = warehouses_resp.json()
             
-        products = products_resp.json()
-        
-        product_map = {}
-        for p in products:
-            if p.get('sku'):
-                product_map[str(p['sku']).strip()] = {
-                    'id': p['id'],
-                    'name': p.get('name', ''),
-                    'is_variant': False,
-                    'variant_id': None
-                }
+            warehouse_map = {}
+            for w in warehouses:
+                name_norm = w.get('name', '').upper().strip()
+                warehouse_map[name_norm] = w['id']
+                warehouse_map[w['id']] = w['id']
             
-            for v in p.get('variants', []):
-                if v.get('sku'):
-                    product_map[str(v['sku']).strip()] = {
+            products_resp = await client.get("https://api.holded.com/api/invoicing/v1/products", headers=headers, timeout=60.0)
+                
+            if products_resp.status_code != 200:
+                raise Exception(f"Error al obtener productos: {products_resp.status_code}")
+                
+            products = products_resp.json()
+            
+            product_map = {}
+            for p in products:
+                if p.get('sku'):
+                    product_map[str(p['sku']).strip()] = {
                         'id': p['id'],
-                        'name': f"{p.get('name','')} - {v.get('name','')}",
-                        'is_variant': True,
-                        'variant_id': v['id']
+                        'name': p.get('name', ''),
+                        'is_variant': False,
+                        'variant_id': None
                     }
-
-        terminals_in_csv = df["TERMINAL"].unique()
-        used_warehouse_ids = set()
-        
-        def resolve_warehouse_id(term_name):
-            term_upper = str(term_name).upper().strip()
-            w_id = warehouse_map.get(term_upper)
-            if not w_id:
-                if "MURCIA" in term_upper: w_id = warehouse_map.get("TIENDA MURCIA")
-                elif "SALAMANCA" in term_upper: w_id = warehouse_map.get("TIENDA SALAMANCA")
-                elif "CACERES" in term_upper or "CÁCERES" in term_upper:
-                    for key, val in warehouse_map.items():
-                            if "CÁCERES" in key and "TIENDA" in key: return val
-                    return "685036750bb898af5e05dd11"
-            return w_id
-
-        for term in terminals_in_csv:
-            w_id = resolve_warehouse_id(term)
-            if w_id:
-                used_warehouse_ids.add(w_id)
-        
-        stock_data_map = {}
-        
-        for w_id in used_warehouse_ids:
-            stock_url = f"https://api.holded.com/api/invoicing/v1/warehouses/{w_id}/stock"
-            s_resp = await client.get(stock_url, headers=headers, timeout=30.0)
-            if s_resp.status_code == 200:
-                data = s_resp.json()
-                w_prods = data.get("warehouse", {}).get("products", [])
-                stock_data_map[w_id] = {}
-                for item in w_prods:
-                    pid = item.get("product_id")
-                    if pid:
-                        stock_data_map[w_id][pid] = {
-                            "stock": item.get("stock", 0),
-                            "variants": item.get("variants", {})
+                
+                for v in p.get('variants', []):
+                    if v.get('sku'):
+                        product_map[str(v['sku']).strip()] = {
+                            'id': p['id'],
+                            'name': f"{p.get('name','')} - {v.get('name','')}",
+                            'is_variant': True,
+                            'variant_id': v['id']
                         }
 
-        results = {
-            "processed": 0,
-            "updated": 0,
-            "errors": [],
-            "updates": []
-        }
-        
-        for index, row in df.iterrows():
-            results["processed"] += 1
+            terminals_in_csv = df["TERMINAL"].unique()
+            used_warehouse_ids = set()
             
-            try:
-                terminal = str(row["TERMINAL"]).strip()
-                sku = str(row["C.BARRAS ARTICULO"]).strip()
-                
-                csv_product = "Unknown"
-                for col in df.columns:
-                    normalized = str(col).upper().replace("Í", "I").replace("í", "I").strip()
-                    if normalized == "ARTICULO" or normalized == "ARTCULO":
-                            csv_product = str(row[col]).strip()
-                            break
-                            
-                units_val = str(row["UNIDADES"]).replace(',', '.')
-                if not units_val or units_val.lower() == 'nan':
-                        continue
-                units = float(units_val)
-            except Exception as e:
-                results["errors"].append({
-                    "row": index,
-                    "error": f"Error parsing data: {str(e)}",
-                    "sku": sku if 'sku' in locals() else "Unknown",
-                    "product": csv_product if 'csv_product' in locals() else "Unknown",
-                    "units": units if 'units' in locals() else None,
-                    "terminal": terminal if 'terminal' in locals() else "Unknown"
-                })
-                continue
+            def resolve_warehouse_id(term_name):
+                term_upper = str(term_name).upper().strip()
+                w_id = warehouse_map.get(term_upper)
+                if not w_id:
+                    if "MURCIA" in term_upper: w_id = warehouse_map.get("TIENDA MURCIA")
+                    elif "SALAMANCA" in term_upper: w_id = warehouse_map.get("TIENDA SALAMANCA")
+                    elif "CACERES" in term_upper or "CÁCERES" in term_upper:
+                        for key, val in warehouse_map.items():
+                                if "CÁCERES" in key and "TIENDA" in key: return val
+                        return "685036750bb898af5e05dd11"
+                return w_id
+
+            for term in terminals_in_csv:
+                w_id = resolve_warehouse_id(term)
+                if w_id:
+                    used_warehouse_ids.add(w_id)
             
-            w_id = resolve_warehouse_id(terminal)
-            if not w_id:
-                results["errors"].append({
-                    "row": index,
-                    "error": f"Almacén '{terminal}' no encontrado",
-                    "sku": sku,
-                    "product": csv_product,
-                    "units": units,
-                    "terminal": terminal
-                })
-                continue
+            stock_data_map = {}
             
-            p_info = product_map.get(sku)
-            if not p_info:
-                results["errors"].append({
-                    "row": index,
-                    "error": f"SKU '{sku}' no encontrado",
-                    "sku": sku,
-                    "product": csv_product,
-                    "units": units,
-                    "terminal": terminal
-                })
-                continue
-                
-            adjustment = -1 * units
-            
-            current_stock = 0
-            main_pid = p_info['id']
-            is_variant = p_info['is_variant']
-            var_id = p_info['variant_id']
-            
-            if w_id in stock_data_map and main_pid in stock_data_map[w_id]:
-                item_stock_data = stock_data_map[w_id][main_pid]
-                if is_variant and var_id:
-                    variants_data = item_stock_data.get("variants", {})
-                    if variants_data and isinstance(variants_data, dict):
-                        current_stock = variants_data.get(var_id, 0)
-                    else:
-                            current_stock = 0
-                else:
-                    current_stock = item_stock_data.get("stock", 0)
-            
-            new_stock = current_stock + adjustment
-            
-            item_id = var_id if is_variant else main_pid
-            
-            stock_payload = {
-                "stock": {
-                    w_id: {
-                        item_id: adjustment
-                    }
-                }
+            for w_id in used_warehouse_ids:
+                stock_url = f"https://api.holded.com/api/invoicing/v1/warehouses/{w_id}/stock"
+                s_resp = await client.get(stock_url, headers=headers, timeout=30.0)
+                if s_resp.status_code == 200:
+                    data = s_resp.json()
+                    w_prods = data.get("warehouse", {}).get("products", [])
+                    stock_data_map[w_id] = {}
+                    for item in w_prods:
+                        pid = item.get("product_id")
+                        if pid:
+                            stock_data_map[w_id][pid] = {
+                                "stock": item.get("stock", 0),
+                                "variants": item.get("variants", {})
+                            }
+
+            results = {
+                "processed": 0,
+                "updated": 0,
+                "errors": [],
+                "updates": []
             }
             
-            update_info = {
-                "row": index,
-                "sku": sku,
-                "product": p_info['name'],
-                "warehouse": terminal,
-                "warehouse_id": w_id,
-                "units_sold": units,
-                "adjustment": adjustment,
-                "current_stock": current_stock,
-                "new_stock": new_stock
-            }
-            
-            if request.dry_run:
-                update_info["status"] = "simulated"
-                results["updates"].append(update_info)
-            else:
-                update_url = f"https://api.holded.com/api/invoicing/v1/products/{main_pid}/stock"
-                upd_resp = await client.put(update_url, headers=headers, json=stock_payload, timeout=10.0)
+            for index, row in df.iterrows():
+                results["processed"] += 1
                 
-                if upd_resp.status_code in [200, 204]:
-                    update_info["status"] = "success"
-                    results["updated"] += 1
-                    results["updates"].append(update_info)
-                else:
-                    update_info["status"] = "error"
-                    update_info["error_detail"] = f"HTTP {upd_resp.status_code} - {upd_resp.text}"
+                try:
+                    terminal = str(row["TERMINAL"]).strip()
+                    sku = str(row["C.BARRAS ARTICULO"]).strip()
+                    
+                    csv_product = "Unknown"
+                    for col in df.columns:
+                        normalized = str(col).upper().replace("Í", "I").replace("í", "I").strip()
+                        if normalized == "ARTICULO" or normalized == "ARTCULO":
+                                csv_product = str(row[col]).strip()
+                                break
+                                
+                    units_val = str(row["UNIDADES"]).replace(',', '.')
+                    if not units_val or units_val.lower() == 'nan':
+                            continue
+                    units = float(units_val)
+                except Exception as e:
                     results["errors"].append({
-                        "row": index, 
-                        "error": f"API Error: {upd_resp.text}", 
-                        "sku": sku, 
-                        "product": p_info['name'],
+                        "row": index,
+                        "error": f"Error parsing data: {str(e)}",
+                        "sku": sku if 'sku' in locals() else "Unknown",
+                        "product": csv_product if 'csv_product' in locals() else "Unknown",
+                        "units": units if 'units' in locals() else None,
+                        "terminal": terminal if 'terminal' in locals() else "Unknown"
+                    })
+                    continue
+                
+                w_id = resolve_warehouse_id(terminal)
+                if not w_id:
+                    results["errors"].append({
+                        "row": index,
+                        "error": f"Almacén '{terminal}' no encontrado",
+                        "sku": sku,
+                        "product": csv_product,
                         "units": units,
                         "terminal": terminal
                     })
+                    continue
+                
+                p_info = product_map.get(sku)
+                if not p_info:
+                    results["errors"].append({
+                        "row": index,
+                        "error": f"SKU '{sku}' no encontrado",
+                        "sku": sku,
+                        "product": csv_product,
+                        "units": units,
+                        "terminal": terminal
+                    })
+                    continue
+                    
+                adjustment = -1 * units
+                
+                current_stock = 0
+                main_pid = p_info['id']
+                is_variant = p_info['is_variant']
+                var_id = p_info['variant_id']
+                
+                if w_id in stock_data_map and main_pid in stock_data_map[w_id]:
+                    item_stock_data = stock_data_map[w_id][main_pid]
+                    if is_variant and var_id:
+                        variants_data = item_stock_data.get("variants", {})
+                        if variants_data and isinstance(variants_data, dict):
+                            current_stock = variants_data.get(var_id, 0)
+                        else:
+                                current_stock = 0
+                    else:
+                        current_stock = item_stock_data.get("stock", 0)
+                
+                new_stock = current_stock + adjustment
+                
+                item_id = var_id if is_variant else main_pid
+                
+                stock_payload = {
+                    "stock": {
+                        w_id: {
+                            item_id: adjustment
+                        }
+                    }
+                }
+                
+                update_info = {
+                    "row": index,
+                    "sku": sku,
+                    "product": p_info['name'],
+                    "warehouse": terminal,
+                    "warehouse_id": w_id,
+                    "units_sold": units,
+                    "adjustment": adjustment,
+                    "current_stock": current_stock,
+                    "new_stock": new_stock
+                }
+                
+                if request.dry_run:
+                    update_info["status"] = "simulated"
+                    results["updates"].append(update_info)
+                else:
+                    update_url = f"https://api.holded.com/api/invoicing/v1/products/{main_pid}/stock"
+                    upd_resp = await client.put(update_url, headers=headers, json=stock_payload, timeout=10.0)
+                    
+                    if upd_resp.status_code in [200, 204]:
+                        update_info["status"] = "success"
+                        results["updated"] += 1
+                        results["updates"].append(update_info)
+                    else:
+                        update_info["status"] = "error"
+                        update_info["error_detail"] = f"HTTP {upd_resp.status_code} - {upd_resp.text}"
+                        results["errors"].append({
+                            "row": index, 
+                            "error": f"API Error: {upd_resp.text}", 
+                            "sku": sku, 
+                            "product": p_info['name'],
+                            "units": units,
+                            "terminal": terminal
+                        })
 
+        log_data["results"] = results
+        log_data["status"] = "success"
         return results
+        
+    except Exception as e:
+        log_data["status"] = "error"
+        log_data["error"] = str(e)
+        raise e
+        
+    finally:
+        end_time = datetime.datetime.now(timezone.utc)
+        log_data["timestamp_end"] = end_time.isoformat()
+        log_data["duration_seconds"] = (end_time - start_time).total_seconds()
+        
+        # Determine bucket name for logs (same as input file if possible)
+        log_bucket_name = settings.GCS_BUCKET_NAME
+        if request.gs_uri.startswith("gs://"):
+            try:
+                parts = request.gs_uri[5:].split("/", 1)
+                if len(parts) >= 1:
+                    log_bucket_name = parts[0]
+            except:
+                pass
+                
+        await upload_log(log_data, log_bucket_name)

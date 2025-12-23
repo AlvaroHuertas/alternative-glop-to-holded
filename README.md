@@ -274,6 +274,12 @@ Actualiza masivamente el stock en Holded tomando como fuente un archivo CSV aloj
     - Muestra el stock *antes* y *después* de la actualización.
     - Reporta errores específicos (fila, SKU, producto) sin detener el proceso completo.
 - ✅ **Dry Run**: Por defecto (`dry_run=true`) simula todo el proceso sin tocar Holded.
+- ✅ **Generación de Logs**:
+    - Genera un archivo `.json` de log en la carpeta `logs/` del mismo bucket de GCS.
+    - El nombre del archivo incluye fecha y hora: `stock_update_log_YYYYMMDD_HHMMSS.json`.
+- ✅ **Snapshot de BBDD**:
+    - El log incluye una copia completa del estado del stock de todos los almacenes *antes* de la ejecución (`database_snapshot`).
+    - Permite auditar y recuperar el estado previo de la base de datos.
 
 #### Parámetros (`JSON`)
 
