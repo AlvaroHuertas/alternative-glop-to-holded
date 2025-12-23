@@ -90,3 +90,9 @@ async def read_root():
 async def storage_page():
     """Serve la página de gestión de Cloud Storage"""
     return FileResponse(static_dir / "storage.html")
+
+@app.get("/holded", tags=["Sistema"], summary="Consultas Holded")
+async def holded_page():
+    """Serve la página de consultas a Holded"""
+    return FileResponse(static_dir / "holded.html")
+

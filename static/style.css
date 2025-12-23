@@ -1230,3 +1230,267 @@ body {
     background: rgba(239, 68, 68, 0.1);
 }
 
+/* =====================
+   Stock Update Page Styles
+   ===================== */
+
+/* Input Method Tabs */
+.input-method-tabs {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    padding: 0.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.method-tab {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1rem 1.5rem;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    font-family: inherit;
+}
+
+.method-tab:hover {
+    color: var(--text-primary);
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.method-tab.active {
+    background: linear-gradient(135deg, var(--accent-primary) 0%, var(--accent-secondary) 100%);
+    color: white;
+    box-shadow: 0 5px 20px var(--accent-glow);
+}
+
+.tab-icon {
+    width: 20px;
+    height: 20px;
+}
+
+/* URI Input */
+.input-section {
+    margin-bottom: 1.5rem;
+}
+
+.input-label {
+    display: block;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+    margin-bottom: 0.75rem;
+    font-weight: 500;
+}
+
+.uri-input-wrapper {
+    display: flex;
+    align-items: center;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.uri-input-wrapper:focus-within {
+    border-color: var(--accent-primary);
+    background: rgba(255, 255, 255, 0.05);
+    box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.1);
+}
+
+.uri-prefix {
+    padding: 1rem 0.75rem 1rem 1rem;
+    color: var(--accent-primary);
+    font-family: 'Monaco', 'Courier New', monospace;
+    font-size: 0.95rem;
+    font-weight: 600;
+    background: rgba(16, 185, 129, 0.1);
+    border-right: 1px solid var(--border-color);
+}
+
+.uri-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    padding: 1rem;
+    color: var(--text-primary);
+    font-size: 0.95rem;
+    font-family: 'Monaco', 'Courier New', monospace;
+}
+
+.uri-input:focus {
+    outline: none;
+}
+
+.uri-input::placeholder {
+    color: var(--text-muted);
+}
+
+.input-hint {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+}
+
+/* Dry Run Notice */
+.dry-run-notice {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    color: #3b82f6;
+    font-size: 0.85rem;
+}
+
+.dry-run-notice svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+}
+
+/* Status message info type */
+.status-message.info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #3b82f6;
+}
+
+/* Simulation Section */
+.simulation-section {
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--border-color);
+    animation: fadeIn 0.5s ease-out;
+}
+
+.simulation-section.collapsed .chevron-icon {
+    transform: rotate(-90deg);
+}
+
+.simulation-section.collapsed .table-collapsible-content {
+    max-height: 0;
+    opacity: 0;
+}
+
+.simulation-summary {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+/* Results Subsections */
+.results-subsection {
+    margin-bottom: 2rem;
+    animation: slideInUp 0.4s ease-out;
+}
+
+.subsection-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: var(--success-color);
+    margin-bottom: 1rem;
+}
+
+.subsection-title svg {
+    width: 22px;
+    height: 22px;
+}
+
+.subsection-title.error-title {
+    color: var(--error-color);
+}
+
+.errors-subsection {
+    background: rgba(239, 68, 68, 0.05);
+    padding: 1.5rem;
+    border-radius: 12px;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+/* Errors table styling */
+.errors-table tbody tr {
+    background: rgba(239, 68, 68, 0.03);
+}
+
+.errors-table tbody tr:hover {
+    background: rgba(239, 68, 68, 0.08);
+}
+
+.error-text {
+    color: var(--error-color);
+    font-size: 0.9rem;
+    max-width: 300px;
+    white-space: normal;
+}
+
+/* Simulation table negative stock */
+.simulation-table .negative-stock {
+    color: var(--error-color) !important;
+    font-weight: 700;
+}
+
+/* Holded queries section update */
+.holded-queries-section .section-title {
+    display: none; /* Hide section title when inside holded page */
+}
+
+/* Upload zone fix for when used with file-info */
+.input-section .upload-zone {
+    margin-top: 0;
+}
+
+.input-section .file-info {
+    margin-top: 0;
+}
+
+/* Make main-content align start for longer pages */
+.main-content {
+    align-items: flex-start;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .input-method-tabs {
+        flex-direction: column;
+    }
+    
+    .method-tab {
+        width: 100%;
+    }
+    
+    .simulation-summary {
+        flex-direction: column;
+    }
+    
+    .uri-input-wrapper {
+        flex-direction: column;
+    }
+    
+    .uri-prefix {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        text-align: center;
+    }
+}

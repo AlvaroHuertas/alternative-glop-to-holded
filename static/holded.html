@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consultas Holded - Alternative CBD</title>
+    <meta name="description" content="Consultas a la API de Holded para ver almacenes y stock">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="grain-overlay"></div>
+    
+    <div class="container">
+        <header class="header">
+            <img src="https://www.alternativecbd.es/wp-content/uploads/2marca-final-anternativeCBD-vertical-transparente-blanc800-min-300x244.png" 
+                 alt="Alternative CBD Logo" 
+                 class="logo"
+                 id="logo">
+            <nav class="nav-menu">
+                <a href="/" class="nav-link">Inicio</a>
+                <a href="/holded" class="nav-link active">Holded</a>
+                <a href="/storage" class="nav-link">Cloud Storage</a>
+            </nav>
+        </header>
+
+        <main class="main-content">
+            <div class="upload-card">
+                <h1 class="title">Consultas Holded</h1>
+                <p class="subtitle">Consulta información de almacenes y stock desde Holded</p>
+
+                <!-- Holded API Queries Section -->
+                <div class="holded-queries-section">
+                    <div class="button-group">
+                        <button class="upload-btn secondary-btn holded-btn" id="fetchWarehousesBtn">
+                            <span class="btn-text">Ver Almacenes</span>
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M3 9L12 2L21 9V20C21 20.5304 20.7893 21.0391 20.4142 21.4142C20.0391 21.7893 19.5304 22 19 22H5C4.46957 22 3.96086 21.7893 3.58579 21.4142C3.21071 21.0391 3 20.5304 3 20V9Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M9 22V12H15V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                        <button class="upload-btn secondary-btn holded-btn" id="fetchStockByWarehouseBtn">
+                            <span class="btn-text">Stock por Almacén</span>
+                            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M20 7H4C2.89543 7 2 7.89543 2 9V19C2 20.1046 2.89543 21 4 21H20C21.1046 21 22 20.1046 22 19V9C22 7.89543 21.1046 7 20 7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M16 21V5C16 4.46957 15.7893 3.96086 15.4142 3.58579C15.0391 3.21071 14.5304 3 14 3H10C9.46957 3 8.96086 3.21071 8.58579 3.58579C8.21071 3.96086 8 4.46957 8 5V21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="progress-container" id="progressContainer" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <p class="progress-text" id="progressText">0%</p>
+                </div>
+
+                <div class="status-message" id="statusMessage" style="display: none;"></div>
+
+                <!-- Holded Warehouses Section -->
+                <div class="holded-section" id="holdedWarehousesSection" style="display: none;">
+                    <div class="data-header" id="holdedWarehousesHeaderToggle">
+                        <div class="data-header-left">
+                            <h2 class="data-title">Almacenes Holded</h2>
+                            <button class="toggle-btn" id="toggleHoldedWarehousesBtn" aria-label="Toggle warehouses">
+                                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <button class="clear-btn" id="clearHoldedWarehousesBtn">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Limpiar
+                        </button>
+                    </div>
+                    <div class="table-collapsible-content" id="holdedWarehousesContent">
+                        <div class="holded-summary">
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Total Almacenes:</span>
+                                <span class="summary-value" id="warehousesCount">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Warehouses Table -->
+                        <div class="table-container">
+                            <table class="data-table" id="warehousesTable">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Nombre</th>
+                                        <th>Descripción</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="warehousesTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Stock by Warehouse Section -->
+                <div class="holded-section" id="stockByWarehouseSection" style="display: none;">
+                    <div class="data-header" id="stockByWarehouseHeaderToggle">
+                        <div class="data-header-left">
+                            <h2 class="data-title">Stock por Almacén</h2>
+                            <button class="toggle-btn" id="toggleStockByWarehouseBtn" aria-label="Toggle stock by warehouse">
+                                <svg class="chevron-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                            </button>
+                        </div>
+                        <button class="clear-btn" id="clearStockByWarehouseBtn">
+                            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            Limpiar
+                        </button>
+                    </div>
+                    <div class="table-collapsible-content" id="stockByWarehouseContent">
+                        <div class="holded-summary">
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Total Almacenes:</span>
+                                <span class="summary-value" id="stockWarehousesCount">0</span>
+                            </div>
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Productos:</span>
+                                <span class="summary-value" id="stockProductsCount">0</span>
+                            </div>
+                            <div class="summary-item info-item">
+                                <span class="summary-label">Variantes:</span>
+                                <span class="summary-value" id="stockVariantsCount">0</span>
+                            </div>
+                        </div>
+
+                        <!-- Stock Table -->
+                        <div class="table-container">
+                            <table class="data-table stock-warehouse-table" id="stockByWarehouseTable">
+                                <thead id="stockByWarehouseTableHead"></thead>
+                                <tbody id="stockByWarehouseTableBody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <footer class="footer">
+            <p>© 2025 Alternative CBD. Todos los derechos reservados.</p>
+        </footer>
+    </div>
+
+    <script src="/static/holded.js"></script>
+</body>
+</html>
